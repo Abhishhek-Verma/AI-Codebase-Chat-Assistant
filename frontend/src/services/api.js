@@ -4,7 +4,7 @@
  * Handles all communication with the backend API.
  */
 
-const BASE_URL = '/api';
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 /**
  * Index a GitHub repository
