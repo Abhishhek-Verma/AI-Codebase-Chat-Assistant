@@ -54,7 +54,6 @@ async function createIndex(chunks, embeddings) {
       },
     }));
 
-    console.log(`Upserting ${vectors.length} vectors...`);
     await index.upsert({ records: vectors });
 
     // Small delay to respect rate limits
