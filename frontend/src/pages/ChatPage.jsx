@@ -62,7 +62,7 @@ export default function ChatPage() {
         <div className="sidebar-header">
           <h1>
             <Code2 size={20} />
-            Codebase RAG
+            Codebase AI
           </h1>
           <p>AI-powered code assistant</p>
         </div>
