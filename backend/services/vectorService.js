@@ -1,139 +1,123 @@
 /**
- * Vector Service
+ * Vector Service — Pinecone
  *
- * Manages the FAISS vector index: create, load, search, and status.
- * Uses faiss-node for local vector similarity search.
+ * Manages vector storage and retrieval using Pinecone cloud vector database.
+ * Replaces local FAISS for production deployments.
  */
 
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const { IndexFlatL2 } = require('faiss-node');
-import fs from 'fs';
-import path from 'path';
+import { Pinecone } from '@pinecone-database/pinecone';
 
-const VECTOR_STORE_PATH = process.env.VECTOR_STORE_PATH || './data/faiss_index';
-const INDEX_FILE = path.join(VECTOR_STORE_PATH, 'index.faiss');
-const METADATA_FILE = path.join(VECTOR_STORE_PATH, 'metadata.json');
+const PINECONE_INDEX = process.env.PINECONE_INDEX || 'codebase-rag';
 
-// In-memory state
-let faissIndex = null;
-let storedChunks = [];
-let indexedRepo = '';
+// Singleton Pinecone client
+let pineconeClient = null;
+let pineconeIndex = null;
 
-function ensureDir() {
-  if (!fs.existsSync(VECTOR_STORE_PATH)) {
-    fs.mkdirSync(VECTOR_STORE_PATH, { recursive: true });
-  }
+/**
+ * Get or initialise the Pinecone client and index
+ */
+async function getIndex() {
+  if (pineconeIndex) return pineconeIndex;
+
+  pineconeClient = new Pinecone({
+    apiKey: process.env.PINECONE_API_KEY,
+  });
+
+  pineconeIndex = pineconeClient.index(PINECONE_INDEX);
+  return pineconeIndex;
 }
 
 /**
- * Create a new FAISS index from chunks and their embeddings, save to disk
+ * Upsert chunks and their embeddings into Pinecone
  * @param {Array<{text: string, metadata: object}>} chunks
  * @param {number[][]} embeddings
  */
 async function createIndex(chunks, embeddings) {
-  if (!embeddings || embeddings.length === 0) {
-    throw new Error('No embeddings provided');
+  const index = await getIndex();
+
+  // Build Pinecone records — batch in groups of 100
+  const BATCH_SIZE = 100;
+  for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+    const batchChunks = chunks.slice(i, i + BATCH_SIZE);
+    const batchEmbeddings = embeddings.slice(i, i + BATCH_SIZE);
+
+    const vectors = batchChunks.map((chunk, j) => ({
+      id: `chunk-${i + j}`,
+      values: batchEmbeddings[j],
+      metadata: {
+        text: chunk.text.slice(0, 8000), // Pinecone metadata limit
+        file: chunk.metadata.file || '',
+        startLine: chunk.metadata.startLine || 0,
+        endLine: chunk.metadata.endLine || 0,
+        language: chunk.metadata.language || '',
+        repo: chunk.metadata.repo || '',
+      },
+    }));
+
+    console.log(`Upserting ${vectors.length} vectors...`);
+    await index.upsert({ records: vectors });
+
+    // Small delay to respect rate limits
+    if (i + BATCH_SIZE < chunks.length) {
+      await new Promise((r) => setTimeout(r, 300));
+    }
   }
-
-  const dimension = embeddings[0].length;
-  const index = new IndexFlatL2(dimension);
-
-  for (const embedding of embeddings) {
-    index.add(embedding);
-  }
-
-  ensureDir();
-  index.write(INDEX_FILE);
-
-  const metadata = {
-    chunks: chunks.map((c) => ({ text: c.text, metadata: c.metadata })),
-    repo: chunks[0]?.metadata?.repo || '',
-    totalChunks: chunks.length,
-    dimension,
-    createdAt: new Date().toISOString(),
-  };
-  fs.writeFileSync(METADATA_FILE, JSON.stringify(metadata, null, 2));
-
-  faissIndex = index;
-  storedChunks = metadata.chunks;
-  indexedRepo = metadata.repo;
 }
 
 /**
- * Load an existing FAISS index from disk
- */
-async function loadIndex() {
-  if (faissIndex) return;
-
-  if (!fs.existsSync(INDEX_FILE) || !fs.existsSync(METADATA_FILE)) {
-    throw new Error('No FAISS index found on disk. Index a repository first.');
-  }
-
-  faissIndex = IndexFlatL2.read(INDEX_FILE);
-  const metadata = JSON.parse(fs.readFileSync(METADATA_FILE, 'utf-8'));
-  storedChunks = metadata.chunks;
-  indexedRepo = metadata.repo;
-}
-
-/**
- * Search the index for top-k similar vectors
+ * Query Pinecone for the top-k similar vectors
  * @param {number[]} queryVector
- * @param {number} k - number of results
- * @returns {Promise<Array<{text: string, metadata: object, score: number}>>}
+ * @param {number} k
+ * @returns {Promise<Array<{text, metadata, score}>>}
  */
 async function search(queryVector, k = 20) {
-  if (!faissIndex) {
-    await loadIndex();
-  }
+  const index = await getIndex();
 
-  const actualK = Math.min(k, storedChunks.length);
-  const result = faissIndex.search(queryVector, actualK);
+  const result = await index.query({
+    vector: queryVector,
+    topK: k,
+    includeMetadata: true,
+  });
 
-  const results = [];
-  for (let i = 0; i < result.labels.length; i++) {
-    const idx = result.labels[i];
-    if (idx >= 0 && idx < storedChunks.length) {
-      results.push({
-        text: storedChunks[idx].text,
-        metadata: storedChunks[idx].metadata,
-        score: 1 / (1 + result.distances[i]),
-      });
-    }
-  }
-  return results;
+  return (result.matches || []).map((match) => ({
+    text: match.metadata.text,
+    metadata: {
+      file: match.metadata.file,
+      startLine: match.metadata.startLine,
+      endLine: match.metadata.endLine,
+      language: match.metadata.language,
+      repo: match.metadata.repo,
+    },
+    score: match.score,
+  }));
 }
 
 /**
- * Get current index status
- * @returns {Promise<{indexed: boolean, totalChunks: number, repo: string}>}
+ * Get current index status from Pinecone stats
+ * @returns {Promise<{indexed: boolean, totalChunks: number}>}
  */
 async function getIndexStatus() {
-  if (!faissIndex && fs.existsSync(METADATA_FILE)) {
-    try {
-      const metadata = JSON.parse(fs.readFileSync(METADATA_FILE, 'utf-8'));
-      return {
-        indexed: true,
-        totalChunks: metadata.totalChunks,
-        repo: metadata.repo,
-        dimension: metadata.dimension,
-        createdAt: metadata.createdAt,
-      };
-    } catch {
-      // Fall through
-    }
-  }
+  try {
+    const index = await getIndex();
+    const stats = await index.describeIndexStats();
+    const totalChunks = stats.totalRecordCount || 0;
 
-  if (faissIndex) {
-    return { indexed: true, totalChunks: storedChunks.length, repo: indexedRepo };
+    return {
+      indexed: totalChunks > 0,
+      totalChunks,
+      repo: 'Pinecone index',
+    };
+  } catch {
+    return {
+      indexed: false,
+      totalChunks: 0,
+      message: 'No repository indexed yet',
+    };
   }
-
-  return { indexed: false, totalChunks: 0, message: 'No repository indexed yet' };
 }
 
 export const vectorService = {
   createIndex,
-  loadIndex,
   search,
   getIndexStatus,
 };
