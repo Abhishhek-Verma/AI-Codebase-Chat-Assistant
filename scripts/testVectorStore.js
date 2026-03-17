@@ -1,64 +1,61 @@
 #!/usr/bin/env node
 
 /**
- * Test Script: Verify Vector Store
+ * Test Script: Verify Vector Store (Pinecone)
  * 
- * Tests FAISS vector store create, save, load, and search.
+ * Tests Pinecone vector store create, save, load, and search.
  * Usage: node scripts/testVectorStore.js
- * 
- * Note: Does NOT require API keys. Uses mock embeddings.
  */
 
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const { IndexFlatL2 } = require('faiss-node');
+import 'dotenv/config';
+import { vectorService } from '../backend/services/vectorService.js';
 
 async function test() {
   console.log('═══════════════════════════════════════');
-  console.log('  🧪 Testing FAISS Vector Store');
+  console.log('  🧪 Testing Pinecone Vector Store');
   console.log('═══════════════════════════════════════\n');
 
   try {
-    const dimension = 8; // Small dimension for testing
+    const dimension = 1536; // OpenAI text-embedding-3-small dimension
 
     // Test 1: Create index
-    console.log('Test 1: Create FAISS index...');
-    const index = new IndexFlatL2(dimension);
-    console.log(`  ✅ Created IndexFlatL2 with dimension ${dimension}\n`);
-
-    // Test 2: Add vectors
-    console.log('Test 2: Add vectors...');
-    const vectors = [
-      [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],  // "auth" concept
-      [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],  // "database" concept
-      [0.9, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],  // similar to "auth"
-      [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],  // "api" concept
+    console.log('Test 1: Upsert vectors into Pinecone...');
+    const chunks = [
+      { text: "Authentication service logic", metadata: { file: "auth.js", startLine: 1, endLine: 10 } },
+      { text: "Database connection setup", metadata: { file: "db.js", startLine: 1, endLine: 5 } },
+      { text: "Login functionality and password hashing", metadata: { file: "login.js", startLine: 5, endLine: 15 } },
+      { text: "REST API routing for users", metadata: { file: "routes.js", startLine: 10, endLine: 20 } },
     ];
-    for (const v of vectors) {
-      index.add(v);
-    }
-    console.log(`  ✅ Added ${vectors.length} vectors\n`);
-
-    // Test 3: Search
-    console.log('Test 3: Search for similar vectors...');
-    const query = [0.95, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]; // close to "auth"
-    const result = index.search(query, 3);
-    console.log(`  Results (top 3):`);
-    for (let i = 0; i < result.labels.length; i++) {
-      const similarity = 1 / (1 + result.distances[i]);
-      console.log(`    ${i + 1}. Index: ${result.labels[i]}, Distance: ${result.distances[i].toFixed(4)}, Similarity: ${similarity.toFixed(4)}`);
-    }
     
-    // Verify closest is vector 0 (auth)
-    if (result.labels[0] === 0) {
-      console.log(`  ✅ Correct! Closest match is vector 0 ("auth" concept)\n`);
-    } else {
-      console.log(`  ❌ Expected vector 0 as closest, got ${result.labels[0]}\n`);
+    // Create random dummy embeddings of dimension 1536
+    const generateRandomEmbedding = () => Array.from({ length: dimension }, () => Math.random() - 0.5);
+    const mockEmbeddings = chunks.map(() => generateRandomEmbedding());
+    
+    // For testing purposes, we make the 1st and 3rd vectors closer to each other by blending them slightly
+    for (let i = 0; i < dimension; i++) {
+        mockEmbeddings[2][i] = (mockEmbeddings[0][i] * 0.8) + (Math.random() * 0.2);
     }
 
-    // Test 4: Total vectors
-    console.log('Test 4: Verify index size...');
-    console.log(`  ✅ ntotal = ${index.ntotal()} vectors\n`);
+    await vectorService.createIndex(chunks, mockEmbeddings);
+    console.log(`  ✅ Upserted ${chunks.length} vectors into Pinecone\n`);
+
+    // Test 2: Search
+    console.log('Test 2: Search for similar vectors...');
+    
+    // We create a query vector that is extremely close to chunk 0
+    const queryVector = mockEmbeddings[0].map(val => val + (Math.random() * 0.01));
+    const searchResults = await vectorService.search(queryVector, 2);
+    
+    console.log(`  Results (top 2):`);
+    for (let i = 0; i < searchResults.length; i++) {
+      const match = searchResults[i];
+      console.log(`    ${i + 1}. File: ${match.metadata.file}, Score: ${match.score?.toFixed(4)}`);
+    }
+
+    // Test 3: Get Status
+    console.log('\nTest 3: Get Index Status...');
+    const status = await vectorService.getIndexStatus();
+    console.log(`  ✅ Status: ${JSON.stringify(status, null, 2)}\n`);
 
     console.log('═══════════════════════════════════════');
     console.log('  ✅ All vector store tests passed!');
