@@ -2,6 +2,8 @@
 
 An AI-powered assistant that lets developers **ask natural language questions** about any GitHub codebase and receive code snippets, explanations, and file references.
 
+## Live Link - https://ai-codebase-chat-assistant.netlify.app
+
 ## Features
 
 - 🔍 **Semantic Code Search** — Ask questions in plain English, get relevant code
@@ -94,3 +96,5 @@ node scripts/indexRepository.js https://github.com/user/repo
 | Vector DB | FAISS (local) |
 | Code Parsing | Regex-based with Tree-sitter ready |
 | CI/CD | GitHub Actions |
+
+
