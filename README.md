@@ -1,6 +1,6 @@
 # AI Codebase Chat Assistant (RAG System)
 
-An AI-powered assistant that lets developers **ask natural language questions** about any GitHub codebase and receive code snippets, explanations, and file references.
+An AI-powered assistant that lets developers **ask natural language questions** about any GitHub codebase and receive code snippets, explanations, and file references...
 
 ## Live Link - https://ai-codebase-chat-assistant.netlify.app
 
@@ -47,7 +47,6 @@ npm run dev
 | `POST` | `/api/repo/index` | `{ repoUrl }` | Index a GitHub repo |
 | `POST` | `/api/chat/query` | `{ question, history? }` | Ask a question (SSE streaming) |
 | `GET`  | `/api/repo/status` | — | Index status |
-| `GET`  | `/api/status` | — | Health check |
 
 ## Architecture
 
