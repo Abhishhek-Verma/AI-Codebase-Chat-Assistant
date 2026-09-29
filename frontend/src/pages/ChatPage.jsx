@@ -1,25 +1,18 @@
 import React, { useState, useEffect } from 'react';
+import Navbar from '../components/Navbar';
+import HeroHeader from '../components/HeroHeader';
 import ChatBox from '../components/ChatBox';
-import { indexRepository, getRepoStatus } from '../services/api';
-import {
-  Code2,
-  GitBranch,
-  Database,
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
-} from 'lucide-react';
+import RepoIngestCard from '../components/RepoIngestCard';
+import InfoSections from '../components/InfoSections';
+import { getRepoStatus } from '../services/api';
 
 /**
- * ChatPage - main page layout with sidebar + chat area
+ * ChatPage - NextStepAI themed Codebase Assistant
  */
 export default function ChatPage() {
-  const [repoUrl, setRepoUrl] = useState('');
   const [indexStatus, setIndexStatus] = useState(null);
-  const [isIngesting, setIsIngesting] = useState(false);
-  const [ingestError, setIngestError] = useState('');
+  const [isIngestOpen, setIsIngestOpen] = useState(false);
 
-  // Check index status on mount
   useEffect(() => {
     fetchStatus();
   }, []);
@@ -29,134 +22,89 @@ export default function ChatPage() {
       const status = await getRepoStatus();
       setIndexStatus(status);
     } catch {
-      setIndexStatus({ indexed: false });
+      setIndexStatus({ indexed: false, totalChunks: 0 });
     }
   };
 
-  const handleIngest = async (e) => {
-    e.preventDefault();
-    if (!repoUrl.trim() || isIngesting) return;
+  const scrollToChat = () => {
+    const chatElement = document.getElementById('chat-section');
+    if (chatElement) {
+      chatElement.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
-    setIsIngesting(true);
-    setIngestError('');
-
-    try {
-      const result = await indexRepository(repoUrl.trim());
-      setIndexStatus({
-        indexed: true,
-        totalChunks: result.totalChunks,
-        repo: result.repo,
-      });
-      setRepoUrl('');
-    } catch (error) {
-      setIngestError(error.message);
-    } finally {
-      setIsIngesting(false);
+  const handleSeeHowItWorks = () => {
+    scrollToChat();
+    // If not yet indexed, open the index modal so user can index first
+    if (!indexStatus?.indexed) {
+      setTimeout(() => {
+        setIsIngestOpen(true);
+      }, 400);
     }
   };
 
   return (
-    <div className="app-layout">
-      {/* Sidebar */}
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <h1>
-            <Code2 size={20} />
-            Codebase AI
-          </h1>
-          <p>AI-powered code assistant</p>
-        </div>
+    <div className="sky-canvas-wrapper">
+      {/* Ambient background decoration */}
+      <div className="ambient-clouds-layer" aria-hidden="true">
+        <div className="cloud-blur cloud-1"></div>
+        <div className="cloud-blur cloud-2"></div>
+        <div className="cloud-blur cloud-3"></div>
+      </div>
+      <div className="contour-lines-layer" aria-hidden="true">
+        <svg viewBox="0 0 1440 600" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path
+            d="M-100 200 C 300 100, 700 450, 1100 220 C 1300 100, 1500 250, 1600 300"
+            stroke="rgba(147, 197, 253, 0.4)"
+            strokeWidth="1.5"
+            strokeDasharray="6 8"
+          />
+          <path
+            d="M-50 400 C 400 300, 800 600, 1200 380 C 1400 280, 1550 400, 1650 420"
+            stroke="rgba(255, 140, 90, 0.2)"
+            strokeWidth="1"
+          />
+        </svg>
+      </div>
 
-        <div className="sidebar-content">
-          {/* Ingest Form */}
-          <form className="ingest-form" onSubmit={handleIngest}>
-            <label>
-              <GitBranch size={12} style={{ display: 'inline', marginRight: '4px' }} />
-              GitHub Repository
-            </label>
-            <input
-              type="text"
-              value={repoUrl}
-              onChange={(e) => setRepoUrl(e.target.value)}
-              placeholder="https://github.com/user/repo"
-              disabled={isIngesting}
-            />
-            <button
-              type="submit"
-              className="btn-ingest"
-              disabled={!repoUrl.trim() || isIngesting}
-            >
-              {isIngesting ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} />
-                  Indexing...
-                </>
-              ) : (
-                <>
-                  <Database size={16} />
-                  Index Repository
-                </>
-              )}
-            </button>
-          </form>
+      {/* Floating Navbar */}
+      <Navbar
+        onOpenIngest={() => setIsIngestOpen(true)}
+        isIndexed={indexStatus?.indexed || false}
+        totalChunks={indexStatus?.totalChunks || 0}
+      />
 
-          {/* Error */}
-          {ingestError && (
-            <div className="index-status not-indexed" style={{ marginTop: '12px' }}>
-              <div className="status-label">
-                <AlertCircle size={14} />
-                Error
-              </div>
-              <div className="status-detail">{ingestError}</div>
-            </div>
-          )}
+      {/* Main Page Layout */}
+      <main className="main-content-flow">
+        {/* Hero Section */}
+        <HeroHeader
+          onStartClick={() => setIsIngestOpen(true)}
+          onExploreClick={handleSeeHowItWorks}
+        />
 
-          {/* Status */}
-          {isIngesting && (
-            <div className="index-status loading">
-              <div className="status-label">
-                <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                Processing...
-              </div>
-              <div className="status-detail">
-                Fetching files, parsing code, generating embeddings...
-              </div>
-            </div>
-          )}
+        {/* Chat Section */}
+        <section id="chat-section" className="chat-section-wrapper">
+          <ChatBox
+            isIndexed={indexStatus?.indexed || false}
+            onOpenIngest={() => setIsIngestOpen(true)}
+          />
+        </section>
 
-          {indexStatus?.indexed && !isIngesting && (
-            <div className="index-status indexed">
-              <div className="status-label">
-                <CheckCircle2 size={14} />
-                Repository Indexed
-              </div>
-              <div className="status-detail">
-                {indexStatus.totalChunks} chunks indexed
-                {indexStatus.repo && (
-                  <span style={{ display: 'block', marginTop: '2px' }}>
-                    {indexStatus.repo}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
+        {/* Informational Sections: Architecture, How It Works, Features */}
+        <InfoSections onOpenIngest={() => setIsIngestOpen(true)} />
+      </main>
 
-          {indexStatus && !indexStatus.indexed && !isIngesting && (
-            <div className="index-status not-indexed">
-              <div className="status-label">
-                <AlertCircle size={14} />
-                No Repository Indexed
-              </div>
-              <div className="status-detail">
-                Enter a GitHub URL above to get started.
-              </div>
-            </div>
-          )}
-        </div>
-      </aside>
-
-      {/* Chat Area */}
-      <ChatBox isIndexed={indexStatus?.indexed || false} />
+      {/* Repository Ingestion Modal */}
+      <RepoIngestCard
+        isOpen={isIngestOpen}
+        onClose={() => setIsIngestOpen(false)}
+        indexStatus={indexStatus}
+        onIndexed={(newStatus) => {
+          setIndexStatus(newStatus);
+          setIsIngestOpen(false);
+          scrollToChat();
+        }}
+      />
     </div>
   );
 }

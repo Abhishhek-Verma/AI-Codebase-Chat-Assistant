@@ -1,19 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Message from './Message';
 import { streamChat } from '../services/api';
-import { Send, Code2, MessageSquare, FileCode, Trash2 } from 'lucide-react';
+import { Send, Sparkles, MessageSquare, FileCode, Trash2, Zap, GitBranch, ArrowUpRight } from 'lucide-react';
 
 const SUGGESTIONS = [
   'Where is authentication implemented?',
-  'Show me the main entry point',
-  'How does the API handle errors?',
-  'What database models exist?',
+  'Show me the main entry point and request flow',
+  'How does the API handle errors and status codes?',
+  'What vector database models and schemas exist?',
 ];
 
 /**
  * ChatBox component - message list + input bar with multi-turn support
+ * Styled with NextStepAI glass aesthetics and coral accents
  */
-export default function ChatBox({ isIndexed }) {
+export default function ChatBox({ isIndexed, onOpenIngest }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -29,7 +30,7 @@ export default function ChatBox({ isIndexed }) {
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = '44px';
+      textareaRef.current.style.height = '48px';
       textareaRef.current.style.height =
         Math.min(textareaRef.current.scrollHeight, 120) + 'px';
     }
@@ -48,12 +49,17 @@ export default function ChatBox({ isIndexed }) {
   };
 
   const handleSend = async (question = input) => {
+    // Strictly prevent asking questions if repo is not indexed
+    if (!isIndexed) {
+      if (onOpenIngest) onOpenIngest();
+      return;
+    }
+
     if (!question.trim() || isStreaming) return;
 
     const userMessage = { role: 'user', content: question.trim() };
     const botMessage = { role: 'bot', content: '', isStreaming: true };
 
-    // Get history before adding new messages
     const history = getHistory();
 
     setMessages((prev) => [...prev, userMessage, botMessage]);
@@ -78,7 +84,7 @@ export default function ChatBox({ isIndexed }) {
       },
       // onRefs
       (refs) => {
-        setReferences(refs);
+        setReferences(refs || []);
       },
       // onDone
       () => {
@@ -96,9 +102,12 @@ export default function ChatBox({ isIndexed }) {
       (error) => {
         setMessages((prev) => {
           const updated = [...prev];
+          const isNotIndexed = error.includes('No indexed codebase found');
           updated[updated.length - 1] = {
             role: 'bot',
-            content: `❌ Error: ${error}`,
+            content: isNotIndexed
+              ? `💡 **No repository has been indexed yet.**\n\nClick the **"Index Repo"** button in the navbar above or the hero button to index any public GitHub repository first!`
+              : `⚠️ **Query Failed:** ${error}\n\n*If you haven't yet, please add your \`GROQ_API_KEY\` to \`backend/.env\`.*`,
             isStreaming: false,
           };
           return updated;
@@ -116,68 +125,82 @@ export default function ChatBox({ isIndexed }) {
   };
 
   return (
-    <div className="chat-area">
-      {/* Header */}
-      <div className="chat-header">
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <MessageSquare size={18} />
-          Chat
-        </h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+    <div className="chat-card-container">
+      {/* Chat Card Header */}
+      <div className="chat-card-header">
+        <div className="header-left">
+          <div className="chat-header-badge">
+            <MessageSquare size={16} className="text-orange" />
+          </div>
+          <div>
+            <h2 className="chat-header-title">Codebase Q&A Console</h2>
+            <p className="chat-header-sub">
+              {isIndexed ? 'Connected to vector store' : 'Awaiting repository indexing'}
+            </p>
+          </div>
+        </div>
+
+        <div className="header-right">
+          <div className="engine-pill">
+            <Zap size={13} className="text-orange" />
+            <span>Groq LLaMA 3.3</span>
+          </div>
+
           {messages.length > 0 && (
-            <button
-              onClick={handleClear}
-              style={{
-                background: 'transparent',
-                border: '1px solid var(--border)',
-                borderRadius: '6px',
-                padding: '4px 10px',
-                fontSize: '12px',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}
-            >
-              <Trash2 size={12} /> Clear
+            <button onClick={handleClear} className="btn-clear-chat" title="Clear conversation">
+              <Trash2 size={13} />
+              <span>Clear</span>
             </button>
-          )}
-          {isIndexed && (
-            <span style={{ fontSize: '12px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              ● Ready
-            </span>
           )}
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="message-list">
+      {/* Messages Viewport */}
+      <div className="chat-viewport">
         {messages.length === 0 ? (
-          <div className="empty-state">
-            <div className="icon">
-              <Code2 size={28} />
+          <div className="chat-empty-state">
+            <div className="empty-sparkle-circle">
+              <Sparkles size={32} className="text-orange" />
             </div>
-            <h3>Ask anything about the codebase</h3>
-            <p>
-              Index a GitHub repository from the sidebar, then ask questions about its code structure, functions, and architecture.
+            <h3 className="empty-title">Ask anything about your code</h3>
+            <p className="empty-description">
+              Query functions, architecture decisions, data models, or error flows. Groq will stream back answers with verified file and line citations.
             </p>
-            {isIndexed && (
-              <div className="suggestion-chips">
-                {SUGGESTIONS.map((s) => (
+
+            {!isIndexed && (
+              <button className="btn-empty-index" onClick={onOpenIngest}>
+                <GitBranch size={15} />
+                <span>Index a GitHub Repository to Begin</span>
+              </button>
+            )}
+
+            <div className="suggestions-container">
+              <span className="suggestions-label">
+                {isIndexed ? 'Try asking:' : 'Sample queries (available after indexing):'}
+              </span>
+              <div className="suggestion-chips-grid">
+                {SUGGESTIONS.map((s, idx) => (
                   <button
-                    key={s}
-                    className="suggestion-chip"
-                    onClick={() => handleSend(s)}
+                    key={idx}
+                    className={`suggestion-chip-pill ${!isIndexed ? 'chip-locked' : ''}`}
+                    onClick={() => {
+                      if (!isIndexed) {
+                        if (onOpenIngest) onOpenIngest();
+                      } else {
+                        handleSend(s);
+                      }
+                    }}
+                    title={!isIndexed ? 'Index a repository first to ask this' : s}
                   >
-                    {s}
+                    <span>{s}</span>
+                    <ArrowUpRight size={13} className="chip-arrow" />
                   </button>
                 ))}
               </div>
-            )}
+            </div>
           </div>
         ) : (
-          <>
+          <div className="messages-stream">
             {messages.map((msg, idx) => (
               <Message
                 key={idx}
@@ -187,44 +210,31 @@ export default function ChatBox({ isIndexed }) {
               />
             ))}
 
-            {/* File References */}
+            {/* Source Citations */}
             {references.length > 0 && !isStreaming && (
-              <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '6px',
-                paddingLeft: '44px',
-                animation: 'fadeIn 0.3s ease',
-              }}>
-                {references.map((ref, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      background: 'rgba(99, 102, 241, 0.1)',
-                      border: '1px solid rgba(99, 102, 241, 0.3)',
-                      borderRadius: '6px',
-                      padding: '4px 8px',
-                      fontSize: '11px',
-                      color: 'var(--accent-hover)',
-                    }}
-                  >
-                    <FileCode size={12} />
-                    {ref.file}:{ref.lines}
-                  </span>
-                ))}
+              <div className="references-shelf">
+                <span className="references-heading">
+                  <FileCode size={13} /> Cited Files & Lines:
+                </span>
+                <div className="references-chips-list">
+                  {references.map((ref, i) => (
+                    <div key={i} className="ref-chip">
+                      <span className="ref-chip-file">{ref.file}</span>
+                      <span className="ref-chip-lines">L{ref.lines}</span>
+                      {ref.language && <span className="ref-chip-lang">{ref.language}</span>}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-          </>
+            <div ref={messagesEndRef} />
+          </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="input-bar">
-        <div className="input-wrapper">
+      {/* Chat Input Bar */}
+      <div className="chat-input-bar">
+        <div className={`input-pill-wrapper ${!isIndexed ? 'input-wrapper-disabled' : ''}`}>
           <textarea
             ref={textareaRef}
             value={input}
@@ -232,20 +242,31 @@ export default function ChatBox({ isIndexed }) {
             onKeyDown={handleKeyDown}
             placeholder={
               isIndexed
-                ? 'Ask about the codebase... (Shift+Enter for new line)'
-                : 'Index a repository first...'
+                ? 'Ask a question about the repository... (Press Enter to send)'
+                : '🔒 Index a repository first to enable asking questions...'
             }
             disabled={!isIndexed || isStreaming}
             rows={1}
           />
           <button
-            className="btn-send"
+            className="btn-send-pill"
             onClick={() => handleSend()}
-            disabled={!input.trim() || !isIndexed || isStreaming}
+            disabled={!isIndexed || !input.trim() || isStreaming}
+            aria-label="Send query"
+            title={!isIndexed ? 'Please index a repository first' : 'Send question'}
           >
-            <Send size={18} />
+            <Send size={16} />
           </button>
         </div>
+        {!isIndexed ? (
+          <div className="input-locked-banner" onClick={onOpenIngest} role="button" tabIndex={0}>
+            <span>⚠️ Questions are locked. <strong>Click here to index a repository first</strong> to start querying.</span>
+          </div>
+        ) : (
+          <div className="input-footer-hint">
+            <span>Groq LLaMA 3.3 · RAG Context Engine · Line-by-line Source References</span>
+          </div>
+        )}
       </div>
     </div>
   );

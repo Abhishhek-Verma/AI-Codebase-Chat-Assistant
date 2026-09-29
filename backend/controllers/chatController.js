@@ -98,8 +98,13 @@ ${question}
     res.write('data: [DONE]\n\n');
     res.end();
   } catch (error) {
+    console.error('[chatController] Error:', error);
     if (!res.headersSent) {
-      res.status(500).json({ error: 'Failed to process query' });
+      res.status(500).json({ error: error.message || 'Failed to process query' });
+    } else {
+      res.write(`data: ${JSON.stringify({ error: error.message || 'Failed to process query' })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
     }
   }
 }

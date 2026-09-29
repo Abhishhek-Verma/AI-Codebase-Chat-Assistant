@@ -1,18 +1,18 @@
 import React from 'react';
 import Markdown from 'react-markdown';
 import CodeSnippet from './CodeSnippet';
-import { Bot, User } from 'lucide-react';
+import { Sparkles, User } from 'lucide-react';
 
 /**
  * Message component - renders a single chat message (user or bot)
  */
 export default function Message({ role, content, isStreaming }) {
   return (
-    <div className={`message ${role}`}>
-      <div className="message-avatar">
-        {role === 'user' ? <User size={16} /> : <Bot size={16} />}
+    <div className={`message-row ${role}`}>
+      <div className={`message-avatar ${role}`}>
+        {role === 'user' ? <User size={15} /> : <Sparkles size={15} />}
       </div>
-      <div className={`message-content ${isStreaming ? 'streaming-cursor' : ''}`}>
+      <div className={`message-bubble ${role} ${isStreaming ? 'streaming-cursor' : ''}`}>
         {role === 'user' ? (
           <p>{content}</p>
         ) : content ? (
@@ -33,13 +33,7 @@ export default function Message({ role, content, isStreaming }) {
 
                 return (
                   <code
-                    style={{
-                      background: 'rgba(99, 102, 241, 0.15)',
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      fontSize: '13px',
-                      color: '#a78bfa',
-                    }}
+                    className="inline-code-pill"
                     {...props}
                   >
                     {children}
