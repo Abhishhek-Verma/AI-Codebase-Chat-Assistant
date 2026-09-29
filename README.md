@@ -4,8 +4,9 @@
 [![React](https://img.shields.io/badge/React-v19-61dafb?logo=react&logoColor=black)](https://react.dev/)
 [![Groq](https://img.shields.io/badge/Inference-Groq%20LPU-f55036?logo=groq&logoColor=white)](https://groq.com/)
 [![Pinecone](https://img.shields.io/badge/Vector%20DB-Pinecone%20Namespaces-000000?logo=pinecone&logoColor=white)](https://www.pinecone.io/)
+[![JWT](https://img.shields.io/badge/Auth-JWT%20(Access%20%2B%20Refresh)-000000?logo=jsonwebtokens&logoColor=white)](https://jwt.io/)
 [![Multi--Tenant](https://img.shields.io/badge/Security-Multi--Tenant%20Isolated-blueviolet)](https://www.pinecone.io/learn/namespaces/)
-[![Google Auth](https://img.shields.io/badge/Auth-Google%20OAuth%202.0-4285F4?logo=google&logoColor=white)](https://developers.google.com/identity)
+[![Bcrypt](https://img.shields.io/badge/Security-Bcrypt%20Hashed-2b5797)](https://www.npmjs.com/package/bcryptjs)
 [![LangChain](https://img.shields.io/badge/Orchestration-LangChain%20JS-1c3c3c?logo=langchain&logoColor=white)](https://js.langchain.com/)
 [![License](https://img.shields.io/badge/License-ISC-blue.svg)](LICENSE)
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Netlify-00ad9f?logo=netlify&logoColor=white)](https://ai-codebase-chat-assistant.netlify.app)
@@ -18,7 +19,7 @@ An intelligent code exploration and repository Q&A platform with **strict multi-
 
 ## 🌟 Key Technical Highlights
 
-- **🔒 Strict Multi-Tenant Isolation (Pinecone Namespaces)**: Every user signs in via Google OAuth and operates inside their own dedicated Pinecone namespace (`ns_google_*`). User A's indexed repositories and query results are 100% invisible to User B.
+- **🔒 Strict Multi-Tenant Isolation (Pinecone Namespaces)**: Every user account operates inside their own dedicated Pinecone namespace (`ns_usr_*`). User A's indexed repositories and query results are 100% invisible to User B.
 - **⚡ Sub-Second Groq Inference**: High-throughput LLM reasoning with real-time Server-Sent Events (SSE) token streaming, achieving first-token latency in ~270ms.
 - **🌳 AST-Aware Syntactic Chunking**: Intelligent code splitting that preserves function, class, and method boundaries with start/end line tracking—never cutting logic mid-statement.
 - **🌲 Pinecone Cloud Vector Engine**: 1536-dimensional vector space with metadata filtering (file paths, line spans, programming language, repository tags).
@@ -26,7 +27,7 @@ An intelligent code exploration and repository Q&A platform with **strict multi-
 - **📎 Grounded Source Citations**: Every answer provides verified file paths, language tags, and line numbers (`file.js:L15-L42`) with interactive UI citation chips.
 - **🔄 Multi-Repository History & Instant Switching**: Users can index multiple repositories in their personal workspace and switch between them anytime—zero repeat indexing needed.
 - **💬 Persistent Multi-Turn Chat History**: Conversations are saved per-repository and restored automatically whenever a user switches repositories or returns to the platform.
-- **🔐 Mandatory Google Login for Private Workspaces**: Ingestion and queries require Google authentication, ensuring all codebases, AST chunks, and discussions stay 100% private to the user's account.
+- **🔐 JWT Authentication with Access & Refresh Tokens**: Secure user registration and sign-in with bcrypt-hashed passwords, short-lived access tokens, and long-lived auto-refreshing sessions.
 - **🎨 Editorial Modern UI**: Styled with frosted glassmorphism, responsive navigation, syntax-highlighted code blocks, copy-to-clipboard, and query locking safeguards.
 - **🛡️ Resilience & Fallback Engine**: Multi-provider embedding strategy that gracefully degrades to avoid pipeline halts during external provider rate limits.
 
@@ -40,11 +41,11 @@ In naive RAG implementations, all indexed code chunks are stored in a single sha
 ### Our Solution: Hard Namespace Isolation
 1. **Per-User Namespaces**: When a user indexes a repository or queries the system, their requests are tagged with a unique tenant ID (`req.user.namespace`).
 2. **Pinecone Namespaces**: Vector operations (`index.namespace(ns).upsert()`, `index.namespace(ns).query()`, `stats.namespaces[ns]`) execute **exclusively** within that user's partition.
-3. **Google OAuth 2.0 Authentication**:
-   - Authenticates securely via Google Identity Services (`https://oauth2.googleapis.com/tokeninfo`).
-   - Every Google account is deterministically mapped to a private namespace (`ns_google_<user_id>`).
-   - All indexed AST chunks, embeddings, and chat contexts are stored exclusively inside that user's private namespace.
-   - When a different Google user logs in, they only see their own previous repositories and work.
+3. **JWT Authentication & Account Isolation**:
+   - Users register with Name, Email, and Password (hashed with `bcryptjs`).
+   - Sessions are protected via JWT Access Tokens (1h) and Refresh Tokens (7d).
+   - Every user account is deterministically mapped to a private namespace (`ns_usr_<id>`).
+   - When a different user logs in, they only see their own previous repositories, vectors, and chat history.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -52,7 +53,7 @@ In naive RAG implementations, all indexed code chunks are stored in a single sha
 │                                                                        │
 │   ┌───────────────────────────┐    ┌───────────────────────────┐       │
 │   │ Namespace:                │    │ Namespace:                │       │
-│   │ ns_google_user_alpha      │    │ ns_google_user_beta       │       │
+│   │ ns_usr_abhishek_1234      │    │ ns_usr_reviewer_5678      │       │
 │   │                           │    │                           │       │
 │   │ • Vectors: expressjs/ex.. │    │ • Vectors: facebook/react │       │
 │   │ • Chunks: 169             │    │ • Chunks: 240             │       │
@@ -60,7 +61,7 @@ In naive RAG implementations, all indexed code chunks are stored in a single sha
 │                 ▲                                ▲                     │
 │                 │ Query / Upsert                 │ Query / Upsert      │
 │                 │                                │                     │
-│       [ Google User Alpha ]            [ Google User Beta ]            │
+│           [ User Alpha ]                   [ User Beta ]               │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -148,7 +149,7 @@ In naive RAG implementations, all indexed code chunks are stored in a single sha
 | **Frontend** | React 19, Vite, Vanilla CSS | Responsive frosted glass UI, AuthContext, SSE stream parser |
 | **Backend** | Node.js (v22), Express.js | REST API, Auth Middleware, SSE streaming endpoints |
 | **Multi-Tenancy** | Pinecone Namespaces & UserStore | Hard isolation of vector embeddings & repo histories |
-| **Authentication** | Google Identity Services & Demo | Google OAuth 2.0 verification + 1-click evaluator profiles |
+| **Authentication** | JWT (Access + Refresh) & Bcrypt | Secure sign up / sign in with bcrypt hashing & auto-refreshing JWT tokens |
 | **Inference Engine**| Groq API (`openai/gpt-oss-120b`) | Ultra-fast token generation and code reasoning (~270ms) |
 | **Vector DB** | Pinecone Cloud | Cloud vector database with cosine similarity indexing |
 | **Orchestration**| LangChain JS (`@langchain/core`) | Model integration, chat memory, prompt orchestration |
@@ -163,20 +164,90 @@ All protected endpoints accept either `Authorization: Bearer <token>` or `x-clie
 
 ### 1. Authentication Endpoints
 
-#### Google OAuth Login
+#### User Registration (Sign Up)
 ```http
-POST /api/auth/google
+POST /api/auth/signup
 Content-Type: application/json
 
 {
-  "credential": "<google_id_token>"
+  "name": "Abhishek Verma",
+  "email": "abhishek@example.com",
+  "password": "SecurePassword123"
+}
+```
+**Response (201 Created):**
+```json
+{
+  "message": "User registered successfully",
+  "accessToken": "eyJhbGciOi...",
+  "refreshToken": "eyJhbGciOi...",
+  "user": {
+    "id": "usr_9f81a7b3c2d1e0f4",
+    "name": "Abhishek Verma",
+    "email": "abhishek@example.com",
+    "namespace": "ns_usr_9f81a7b3c2d1e0f4",
+    "repos": []
+  }
+}
+```
+
+#### User Login (Sign In)
+```http
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "email": "abhishek@example.com",
+  "password": "SecurePassword123"
+}
+```
+**Response (200 OK):**
+```json
+{
+  "message": "Login successful",
+  "accessToken": "eyJhbGciOi...",
+  "refreshToken": "eyJhbGciOi...",
+  "user": {
+    "id": "usr_9f81a7b3c2d1e0f4",
+    "name": "Abhishek Verma",
+    "email": "abhishek@example.com",
+    "namespace": "ns_usr_9f81a7b3c2d1e0f4",
+    "repos": [...]
+  }
+}
+```
+
+#### Token Refresh
+```http
+POST /api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "<stored_refresh_token>"
+}
+```
+**Response (200 OK):**
+```json
+{
+  "accessToken": "eyJhbGciOi...",
+  "refreshToken": "eyJhbGciOi..."
+}
+```
+
+#### User Logout
+```http
+POST /api/auth/logout
+Content-Type: application/json
+
+{
+  "refreshToken": "<stored_refresh_token>"
 }
 ```
 
 #### Current User Session
 ```http
 GET /api/auth/me
-Authorization: Bearer <token>
+Authorization: Bearer <accessToken>
 ```
 
 ---
@@ -267,7 +338,6 @@ Content-Type: application/json
 - Node.js **>= 20.0.0**
 - A free **Groq API Key** ([console.groq.com](https://console.groq.com/))
 - A free **Pinecone API Key & Index** ([pinecone.io](https://www.pinecone.io/))
-- *(Optional)* A **Google OAuth Client ID** for Google Sign-In ([console.cloud.google.com](https://console.cloud.google.com/))
 
 ---
 
@@ -291,6 +361,10 @@ GROQ_MODEL=openai/gpt-oss-120b
 PINECONE_API_KEY=your_pinecone_api_key_here
 PINECONE_INDEX=codebase-rag
 
+# JWT Authentication Secrets (Optional: defaults are provided for local development)
+JWT_ACCESS_SECRET=your_jwt_access_secret_key_here
+JWT_REFRESH_SECRET=your_jwt_refresh_secret_key_here
+
 # Optional: GitHub API Token for higher rate limits
 GITHUB_TOKEN=your_github_token_here
 ```
@@ -313,7 +387,6 @@ npm install
 *(Optional)* Create `.env` in `frontend/`:
 ```env
 VITE_API_URL=http://localhost:5000/api
-VITE_GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
 ```
 
 Start the frontend:
@@ -330,11 +403,11 @@ npm run dev
 AI-Codebase-Chat-Assistant/
 ├── backend/
 │   ├── controllers/
-│   │   ├── authController.js       # Google & Demo login handlers
+│   │   ├── authController.js       # Signup, login, refresh & session handlers
 │   │   ├── chatController.js       # SSE stream & tenant-isolated retrieval
 │   │   └── repoController.js       # Indexing, status & multi-repo switching
 │   ├── middleware/
-│   │   └── authMiddleware.js       # Google ID token, demo & guest session parser
+│   │   └── authMiddleware.js       # JWT Access Token validation & tenant injector
 │   ├── rag/
 │   │   ├── chunking/chunkCode.js   # AST-aware code chunking
 │   │   ├── indexing/indexRepo.js   # End-to-end ingestion pipeline
@@ -342,14 +415,15 @@ AI-Codebase-Chat-Assistant/
 │   │   ├── ingestion/githubLoader.js# Octokit tree extractor
 │   │   └── reranking/rerank.js     # Semantic scoring & definition booster
 │   ├── routes/
-│   │   ├── authRoutes.js           # /api/auth/*
-│   │   ├── chatRoutes.js           # /api/chat/query
+│   │   ├── authRoutes.js           # /api/auth/signup, /login, /refresh, /logout, /me
+│   │   ├── chatRoutes.js           # /api/chat/query, /history
 │   │   └── repoRoutes.js           # /api/repo/index, /api/repo/status, /select
 │   ├── services/
 │   │   ├── embeddingService.js     # Vector embedding generation & fallback
+│   │   ├── jwtService.js           # Issue & verify Access (1h) & Refresh (7d) tokens
 │   │   ├── llmService.js           # Groq streaming completion client
 │   │   ├── retrievalService.js     # Metadata filtering
-│   │   ├── userStore.js            # Persistent tenant profile & repo history
+│   │   ├── userStore.js            # Persistent tenant profile, bcrypt hash & repo history
 │   │   └── vectorService.js        # Pinecone namespace isolation & search
 │   ├── server.js                   # Express application entry point
 │   └── package.json
@@ -359,7 +433,7 @@ AI-Codebase-Chat-Assistant/
 │   │   └── favicon.svg             # Custom brand vector logo
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── AuthModal.jsx       # Google Sign-In & 1-Click Demo Profiles modal
+│   │   │   ├── AuthModal.jsx       # Email/Password Sign Up & Sign In modal
 │   │   │   ├── ChatBox.jsx         # Chat console, suggestion chips, citations
 │   │   │   ├── CodeSnippet.jsx     # Prism syntax highlighter with copy
 │   │   │   ├── HeroHeader.jsx      # Editorial headline & feature pills

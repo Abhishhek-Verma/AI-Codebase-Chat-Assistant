@@ -1896,84 +1896,124 @@ html, body {
   color: #7c2d12;
 }
 
-.auth-section {
-  margin-top: 20px;
+/* Tab Switcher inside Auth Modal */
+.auth-tab-bar {
+  display: flex;
+  margin: 16px 24px 0;
+  background: #f1f5f9;
+  border-radius: var(--radius-full);
+  padding: 4px;
+  gap: 4px;
 }
 
-.auth-section-label {
-  display: block;
+.auth-tab-btn {
+  flex: 1;
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.auth-tab-btn.active {
+  background: #ffffff;
+  color: var(--text-ink);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+
+.auth-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.auth-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-input-group label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-subtle);
-  margin-bottom: 10px;
+  color: var(--text-heading);
 }
 
-.btn-google-primary {
+.auth-input-wrapper input {
+  width: 100%;
+  background: #f8fafc;
+  border: 1.5px solid rgba(203, 213, 225, 0.85);
+  border-radius: var(--radius-full);
+  padding: 11px 18px;
+  font-size: 13.5px;
+  color: var(--text-ink);
+  outline: none;
+  transition: var(--transition-fast);
+}
+
+.auth-input-wrapper input:focus {
+  border-color: var(--orange-primary);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px var(--orange-glow);
+}
+
+.btn-auth-submit {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 13px 20px;
-  background: #ffffff;
-  border: 1.5px solid #dadce0;
-  border-radius: var(--radius-full);
-  font-size: 14.5px;
-  font-weight: 700;
-  color: #3c4043;
-  cursor: pointer;
-  transition: var(--transition-fast);
-  box-shadow: 0 2px 8px rgba(60, 64, 67, 0.08);
-}
-
-.btn-google-primary:hover {
-  background: #f8fafc;
-  border-color: #4285F4;
-  color: #1a73e8;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(66, 133, 244, 0.16);
-}
-
-.google-icon-svg {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-}
-
-.google-login-action-box {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-}
-
-.google-hint-sub {
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.google-hint-sub code {
-  font-family: var(--font-mono);
-  background: var(--orange-light);
-  color: #c2410c;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.google-email-form {
-  margin-top: 14px;
-  display: flex;
-  flex-direction: column;
   gap: 8px;
+  background: var(--orange-gradient);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-full);
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 6px;
+  box-shadow: 0 3px 10px var(--orange-glow);
+  transition: var(--transition-fast);
 }
 
-.google-nav-icon {
-  margin-right: 2px;
+.btn-auth-submit:hover:not(:disabled) {
+  background: var(--orange-hover);
+  transform: translateY(-1px);
+}
+
+.btn-auth-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-switch-footer {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.auth-switch-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--orange-primary);
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  margin-left: 4px;
+}
+
+.auth-switch-link:hover {
+  color: var(--orange-hover);
 }
 
 /* Card Namespace Indicator inside Repo Ingest Card */

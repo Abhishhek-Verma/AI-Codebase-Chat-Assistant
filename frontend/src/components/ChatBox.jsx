@@ -224,21 +224,21 @@ export default function ChatBox({ isIndexed, onOpenIngest, onOpenAuth }) {
             </div>
             <h3 className="empty-title">
               {!isAuthenticated
-                ? 'Sign in with Google to explore any codebase'
+                ? 'Sign in to explore any codebase'
                 : isIndexed
                 ? `Ask anything about ${repoDisplayName || 'your codebase'}`
                 : 'Index a repository to get started'}
             </h3>
             <p className="empty-description">
               {!isAuthenticated
-                ? 'Sign in with Google to index repositories into your private Pinecone namespace. Your code chunks and chat history persist permanently across visits.'
+                ? 'Sign in or create an account to index repositories into your private Pinecone namespace. Your code chunks and chat history persist permanently across visits.'
                 : 'Query functions, architecture decisions, data models, or error flows. Groq will stream back answers with verified file and line citations.'}
             </p>
 
             {!isAuthenticated ? (
               <button className="btn-empty-index" onClick={onOpenAuth}>
                 <LogIn size={15} />
-                <span>Sign In with Google to Begin</span>
+                <span>Sign In or Sign Up to Begin</span>
               </button>
             ) : !isIndexed ? (
               <button className="btn-empty-index" onClick={onOpenIngest}>
@@ -329,7 +329,7 @@ export default function ChatBox({ isIndexed, onOpenIngest, onOpenAuth }) {
             onKeyDown={handleKeyDown}
             placeholder={
               !isAuthenticated
-                ? '🔒 Please sign in with Google to enable questioning...'
+                ? '🔒 Please sign in or create an account to enable questioning...'
                 : isIndexed
                 ? `Ask a question about ${repoDisplayName || 'the repository'}... (Press Enter to send)`
                 : '🔒 Index a repository first to enable asking questions...'
@@ -344,7 +344,7 @@ export default function ChatBox({ isIndexed, onOpenIngest, onOpenAuth }) {
             aria-label="Send query"
             title={
               !isAuthenticated
-                ? 'Please sign in with Google'
+                ? 'Please sign in or create an account'
                 : !isIndexed
                 ? 'Please index a repository first'
                 : 'Send question'
@@ -356,7 +356,7 @@ export default function ChatBox({ isIndexed, onOpenIngest, onOpenAuth }) {
 
         {!isAuthenticated ? (
           <div className="input-locked-banner" onClick={onOpenAuth} role="button" tabIndex={0}>
-            <span>🔒 Authentication required: <strong>Sign in with Google</strong> to index repositories and access persistent chats.</span>
+            <span>🔒 Authentication required: <strong>Sign In or Sign Up</strong> to index repositories and access persistent chats.</span>
           </div>
         ) : !isIndexed ? (
           <div className="input-locked-banner" onClick={onOpenIngest} role="button" tabIndex={0}>

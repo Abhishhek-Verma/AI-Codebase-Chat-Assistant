@@ -1,121 +1,162 @@
 import { userStore } from '../services/userStore.js';
-
-function decodeBase64Url(str) {
-  try {
-    let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
-    while (base64.length % 4) {
-      base64 += '=';
-    }
-    return Buffer.from(base64, 'base64').toString('utf-8');
-  } catch {
-    return null;
-  }
-}
-
-async function verifyGoogleToken(idToken) {
-  try {
-    const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        id: `google_${data.sub}`,
-        email: data.email,
-        name: data.name,
-        picture: data.picture,
-      };
-    }
-  } catch (err) {
-    console.warn('[authController] tokeninfo error, falling back to payload decode:', err.message);
-  }
-
-  const parts = idToken.split('.');
-  if (parts.length === 3) {
-    const payloadJson = decodeBase64Url(parts[1]);
-    if (payloadJson) {
-      const payload = JSON.parse(payloadJson);
-      if (payload.sub) {
-        return {
-          id: `google_${payload.sub}`,
-          email: payload.email || 'user@gmail.com',
-          name: payload.name || 'Google User',
-          picture: payload.picture || '',
-        };
-      }
-    }
-  }
-  return null;
-}
+import { jwtService } from '../services/jwtService.js';
 
 /**
- * POST /api/auth/google
+ * POST /api/auth/signup
+ * Register a new user with name, email, and password
  */
-export async function googleLogin(req, res) {
+export async function signup(req, res) {
   try {
-    const { idToken, credential } = req.body;
-    const token = idToken || credential;
+    const { name, email, password } = req.body;
 
-    if (!token) {
-      return res.status(400).json({ error: 'Google ID token is required' });
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ error: 'Full name is required' });
     }
 
-    const googleProfile = await verifyGoogleToken(token);
-    if (!googleProfile) {
-      return res.status(401).json({ error: 'Failed to verify Google token' });
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      return res.status(400).json({ error: 'A valid email address is required' });
     }
 
-    const user = userStore.upsertUser(googleProfile);
-    const repoData = userStore.getUserRepoData(user.id);
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+    }
 
-    res.json({
-      token,
-      user,
-      ...repoData,
+    // Check if user already exists
+    const existing = userStore.findUserByEmail(email);
+    if (existing) {
+      return res.status(409).json({
+        error: 'An account with this email already exists. Please sign in instead.',
+        code: 'EMAIL_ALREADY_EXISTS',
+      });
+    }
+
+    // Create user and hash password
+    const user = await userStore.createUser({ name, email, password });
+
+    // Generate JWT access & refresh tokens
+    const { accessToken, refreshToken } = jwtService.generateTokens(user);
+    userStore.updateRefreshToken(user.id, refreshToken);
+
+    const safeUser = userStore.sanitizeUser(user);
+
+    res.status(201).json({
+      message: 'Account created successfully',
+      user: safeUser,
+      accessToken,
+      refreshToken,
+      repos: [],
+      activeRepo: null,
     });
   } catch (err) {
-    console.error('[authController] googleLogin error:', err);
-    res.status(500).json({ error: 'Authentication failed' });
+    console.error('[authController] signup error:', err);
+    res.status(500).json({ error: 'Failed to create account. Please try again.' });
   }
 }
 
 /**
- * POST /api/auth/demo
+ * POST /api/auth/login
+ * Authenticate existing user with email and password
  */
-export async function demoLogin(req, res) {
+export async function login(req, res) {
   try {
-    const { demoType = 'candidate_reviewer' } = req.body;
-    const demoProfiles = {
-      candidate_reviewer: {
-        id: 'demo_candidate_reviewer',
-        name: 'Technical Interviewer',
-        email: 'reviewer@enterprise.ai',
-        picture: 'https://api.dicebear.com/7.x/bottts/svg?seed=reviewer',
-      },
-      lead_dev: {
-        id: 'demo_lead_dev',
-        name: 'Abhishek Verma (Lead)',
-        email: 'abhishek.verma@codebase.ai',
-        picture: 'https://api.dicebear.com/7.x/bottts/svg?seed=abhishek',
-      },
-      guest_developer: {
-        id: 'demo_guest_developer',
-        name: 'Guest Developer',
-        email: 'guest.dev@codebase.ai',
-        picture: 'https://api.dicebear.com/7.x/bottts/svg?seed=guest',
-      },
-    };
+    const { email, password } = req.body;
 
-    const profile = demoProfiles[demoType] || demoProfiles.candidate_reviewer;
-    const user = userStore.upsertUser(profile);
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    const user = userStore.findUserByEmail(email);
+    if (!user) {
+      return res.status(401).json({
+        error: 'Invalid email or password. Please verify your credentials or sign up.',
+        code: 'INVALID_CREDENTIALS',
+      });
+    }
+
+    const isValid = await userStore.validatePassword(user, password);
+    if (!isValid) {
+      return res.status(401).json({
+        error: 'Invalid email or password. Please verify your credentials.',
+        code: 'INVALID_CREDENTIALS',
+      });
+    }
+
+    // Generate fresh tokens
+    const { accessToken, refreshToken } = jwtService.generateTokens(user);
+    userStore.updateRefreshToken(user.id, refreshToken);
+
+    const safeUser = userStore.sanitizeUser(user);
     const repoData = userStore.getUserRepoData(user.id);
 
     res.json({
-      token: `demo_${demoType}`,
-      user,
+      message: 'Signed in successfully',
+      user: safeUser,
+      accessToken,
+      refreshToken,
       ...repoData,
     });
   } catch (err) {
-    console.error('[authController] demoLogin error:', err);
-    res.status(500).json({ error: 'Demo authentication failed' });
+    console.error('[authController] login error:', err);
+    res.status(500).json({ error: 'Sign in failed. Please try again.' });
+  }
+}
+
+/**
+ * POST /api/auth/refresh
+ * Exchange refresh token for a new access token
+ */
+export async function refreshTokenHandler(req, res) {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(400).json({ error: 'Refresh token is required' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwtService.verifyRefreshToken(refreshToken);
+    } catch {
+      return res.status(401).json({
+        error: 'Invalid or expired refresh token. Please sign in again.',
+        code: 'REFRESH_EXPIRED',
+      });
+    }
+
+    const user = userStore.getUser(decoded.id);
+    if (!user || user.refreshToken !== refreshToken) {
+      return res.status(401).json({
+        error: 'Refresh token has been revoked or is invalid. Please sign in again.',
+        code: 'TOKEN_REVOKED',
+      });
+    }
+
+    // Issue new pair
+    const tokens = jwtService.generateTokens(user);
+    userStore.updateRefreshToken(user.id, tokens.refreshToken);
+
+    res.json({
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      user: userStore.sanitizeUser(user),
+    });
+  } catch (err) {
+    console.error('[authController] refreshToken error:', err);
+    res.status(500).json({ error: 'Failed to refresh authentication session' });
+  }
+}
+
+/**
+ * POST /api/auth/logout
+ */
+export async function logout(req, res) {
+  try {
+    if (req.user?.id) {
+      userStore.clearRefreshToken(req.user.id);
+    }
+    res.json({ message: 'Signed out successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 }
 

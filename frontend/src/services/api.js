@@ -1,34 +1,38 @@
 /**
- * API Service with Multi-Tenant Google Authentication & Persistent Chat
+ * API Service with JWT Authentication (Access + Refresh Tokens) & Persistent Chat
  *
  * Handles communication with the backend API, automatically attaching
- * Google OAuth bearer tokens.
+ * JWT access tokens and handling automatic token refresh when expired.
  */
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-const TOKEN_KEY = 'codebase_auth_token';
 
-export function getStoredToken() {
-  return localStorage.getItem(TOKEN_KEY);
+const ACCESS_TOKEN_KEY = 'codebase_access_token';
+const REFRESH_TOKEN_KEY = 'codebase_refresh_token';
+
+export function getAccessToken() {
+  return localStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
-export function setStoredToken(token) {
-  if (token) {
-    localStorage.setItem(TOKEN_KEY, token);
-  } else {
-    localStorage.removeItem(TOKEN_KEY);
-  }
+export function getRefreshToken() {
+  return localStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
-export function clearStoredToken() {
-  localStorage.removeItem(TOKEN_KEY);
+export function setTokens(accessToken, refreshToken) {
+  if (accessToken) localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+  if (refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+}
+
+export function clearTokens() {
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
 /**
- * Build request headers including tenant auth context
+ * Build request headers including JWT Bearer token
  */
 function getHeaders(extraHeaders = {}) {
-  const token = getStoredToken();
+  const token = getAccessToken();
   const headers = {
     'Content-Type': 'application/json',
     ...extraHeaders,
@@ -42,41 +46,121 @@ function getHeaders(extraHeaders = {}) {
 }
 
 /**
- * Login with Google ID Token / Credential
+ * Attempt to refresh expired access token using refresh token
  */
-export async function loginWithGoogle(credential) {
-  const response = await fetch(`${BASE_URL}/auth/google`, {
+export async function refreshAccessToken() {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) {
+    clearTokens();
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    if (!response.ok) {
+      clearTokens();
+      return null;
+    }
+
+    const data = await response.json();
+    setTokens(data.accessToken, data.refreshToken);
+    return data.accessToken;
+  } catch {
+    clearTokens();
+    return null;
+  }
+}
+
+/**
+ * Wrapper around fetch with automatic token refresh on 401 TOKEN_EXPIRED
+ */
+async function authFetch(url, options = {}) {
+  let headers = getHeaders(options.headers || {});
+  let response = await fetch(url, { ...options, headers });
+
+  if (response.status === 401) {
+    let errBody = null;
+    try {
+      errBody = await response.clone().json();
+    } catch {}
+
+    if (errBody?.code === 'TOKEN_EXPIRED') {
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        headers = getHeaders(options.headers || {});
+        response = await fetch(url, { ...options, headers });
+      }
+    }
+  }
+
+  return response;
+}
+
+/**
+ * Register a new user
+ */
+export async function signupUser({ name, email, password }) {
+  const response = await fetch(`${BASE_URL}/auth/signup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ credential }),
+    body: JSON.stringify({ name, email, password }),
   });
 
+  const data = await response.json();
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to sign in with Google');
+    throw new Error(data.error || 'Failed to create account');
   }
 
-  const data = await response.json();
-  if (data.token) {
-    setStoredToken(data.token);
-  }
+  setTokens(data.accessToken, data.refreshToken);
   return data;
+}
+
+/**
+ * Sign in existing user
+ */
+export async function loginUser({ email, password }) {
+  const response = await fetch(`${BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to sign in');
+  }
+
+  setTokens(data.accessToken, data.refreshToken);
+  return data;
+}
+
+/**
+ * Logout user
+ */
+export async function logoutUser() {
+  try {
+    await authFetch(`${BASE_URL}/auth/logout`, { method: 'POST' });
+  } catch {}
+  clearTokens();
 }
 
 /**
  * Fetch current authenticated user profile and repos
  */
 export async function getCurrentUser() {
-  const token = getStoredToken();
+  const token = getAccessToken();
   if (!token) return null;
 
   try {
-    const response = await fetch(`${BASE_URL}/auth/me`, {
-      headers: getHeaders(),
-    });
+    const response = await authFetch(`${BASE_URL}/auth/me`);
     if (!response.ok) {
       if (response.status === 401) {
-        clearStoredToken();
+        clearTokens();
       }
       return null;
     }
@@ -90,64 +174,58 @@ export async function getCurrentUser() {
  * Index a GitHub repository in the user's isolated namespace
  */
 export async function indexRepository(repoUrl) {
-  const response = await fetch(`${BASE_URL}/repo/index`, {
+  const response = await authFetch(`${BASE_URL}/repo/index`, {
     method: 'POST',
-    headers: getHeaders(),
     body: JSON.stringify({ repoUrl }),
   });
 
+  const data = await response.json();
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to index repository');
+    throw new Error(data.error || 'Failed to index repository');
   }
 
-  return response.json();
+  return data;
 }
 
 /**
  * Get current index status for user's isolated namespace
  */
 export async function getRepoStatus() {
-  const response = await fetch(`${BASE_URL}/repo/status`, {
-    headers: getHeaders(),
-  });
+  const response = await authFetch(`${BASE_URL}/repo/status`);
+  const data = await response.json();
   if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error || 'Failed to fetch status');
+    throw new Error(data.error || 'Failed to fetch status');
   }
-  return response.json();
+  return data;
 }
 
 /**
  * Switch active repository for user
  */
 export async function switchActiveRepo(repoUrl) {
-  const response = await fetch(`${BASE_URL}/repo/select`, {
+  const response = await authFetch(`${BASE_URL}/repo/select`, {
     method: 'POST',
-    headers: getHeaders(),
     body: JSON.stringify({ repoUrl }),
   });
 
+  const data = await response.json();
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to switch repository');
+    throw new Error(data.error || 'Failed to switch repository');
   }
 
-  return response.json();
+  return data;
 }
 
 /**
  * Fetch persistent chat history for a repository
  */
 export async function fetchChatHistory(repoUrl) {
-  const token = getStoredToken();
+  const token = getAccessToken();
   if (!token) return [];
 
   try {
     const query = repoUrl ? `?repoUrl=${encodeURIComponent(repoUrl)}` : '';
-    const response = await fetch(`${BASE_URL}/chat/history${query}`, {
-      headers: getHeaders(),
-    });
+    const response = await authFetch(`${BASE_URL}/chat/history${query}`);
     if (!response.ok) return [];
     const data = await response.json();
     return data.history || [];
@@ -161,9 +239,8 @@ export async function fetchChatHistory(repoUrl) {
  */
 export async function clearChatHistoryApi(repoUrl) {
   const query = repoUrl ? `?repoUrl=${encodeURIComponent(repoUrl)}` : '';
-  const response = await fetch(`${BASE_URL}/chat/history${query}`, {
+  const response = await authFetch(`${BASE_URL}/chat/history${query}`, {
     method: 'DELETE',
-    headers: getHeaders(),
   });
   if (!response.ok) {
     const err = await response.json();
@@ -177,9 +254,8 @@ export async function clearChatHistoryApi(repoUrl) {
  */
 export async function streamChat(question, history, onToken, onRefs, onDone, onError, repoUrl = null) {
   try {
-    const response = await fetch(`${BASE_URL}/chat/query`, {
+    const response = await authFetch(`${BASE_URL}/chat/query`, {
       method: 'POST',
-      headers: getHeaders(),
       body: JSON.stringify({ question, history, repoUrl }),
     });
 

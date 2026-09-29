@@ -108,11 +108,11 @@ export default function RepoIngestCard({ isOpen, onClose, indexStatus, onIndexed
           <div className="auth-required-banner" onClick={onOpenAuth} role="button" tabIndex={0}>
             <LogIn size={15} className="text-orange" />
             <div className="auth-required-text">
-              <span className="banner-title">Google Sign-In Required:</span>
-              <span className="banner-sub"> Please sign in with Google to index repositories and save them permanently to your workspace.</span>
+              <span className="banner-title">Authentication Required:</span>
+              <span className="banner-sub"> Please sign in or create an account to index repositories and save them permanently to your workspace.</span>
             </div>
             <button type="button" className="btn-banner-login" onClick={onOpenAuth}>
-              Sign In
+              Sign In / Sign Up
             </button>
           </div>
         )}

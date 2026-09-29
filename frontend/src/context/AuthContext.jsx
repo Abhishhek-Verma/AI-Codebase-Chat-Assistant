@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   getCurrentUser,
-  loginWithGoogle as apiLoginWithGoogle,
-  clearStoredToken,
+  signupUser,
+  loginUser,
+  logoutUser,
   switchActiveRepo as apiSwitchActiveRepo,
 } from '../services/api';
 
@@ -39,10 +40,10 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const loginWithGoogle = async (credential) => {
+  const signup = async (userData) => {
     setIsLoading(true);
     try {
-      const data = await apiLoginWithGoogle(credential);
+      const data = await signupUser(userData);
       setUser(data.user);
       setRepos(data.repos || []);
       setActiveRepo(data.activeRepo || null);
@@ -52,8 +53,21 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const logout = () => {
-    clearStoredToken();
+  const login = async (credentials) => {
+    setIsLoading(true);
+    try {
+      const data = await loginUser(credentials);
+      setUser(data.user);
+      setRepos(data.repos || []);
+      setActiveRepo(data.activeRepo || null);
+      return data;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const logout = async () => {
+    await logoutUser();
     setUser(null);
     setRepos([]);
     setActiveRepo(null);
@@ -85,7 +99,8 @@ export function AuthProvider({ children }) {
         isLoading,
         repos,
         activeRepo,
-        loginWithGoogle,
+        signup,
+        login,
         logout,
         selectRepo,
         refreshSession,

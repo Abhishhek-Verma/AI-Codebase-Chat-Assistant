@@ -1,14 +1,15 @@
 /**
  * User Store Service
  * 
- * Persistent storage for user profiles, indexed repositories,
- * and persistent chat conversations per repository.
+ * Persistent storage for user accounts (with hashed passwords),
+ * refresh tokens, indexed repositories, and per-repository chat histories.
  * Stored in backend/data/user_store.json.
  */
 
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import bcrypt from 'bcryptjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,7 +48,7 @@ function saveStore() {
 }
 
 /**
- * Generate safe ASCII namespace for Pinecone from user ID / email
+ * Generate safe ASCII namespace for Pinecone from user ID
  */
 export function getNamespaceForUser(userId) {
   if (!userId) return 'default';
@@ -56,7 +57,31 @@ export function getNamespaceForUser(userId) {
 }
 
 /**
- * Get user record
+ * Remove sensitive data like passwordHash and refreshToken before sending to client
+ */
+export function sanitizeUser(user) {
+  if (!user) return null;
+  const { passwordHash, refreshToken, ...safeUser } = user;
+  return safeUser;
+}
+
+/**
+ * Find user by email (case-insensitive)
+ */
+export function findUserByEmail(email) {
+  if (!email) return null;
+  const store = loadStore();
+  const normalized = email.trim().toLowerCase();
+  for (const id in store.users) {
+    if (store.users[id]?.email?.toLowerCase() === normalized) {
+      return store.users[id];
+    }
+  }
+  return null;
+}
+
+/**
+ * Get user by ID
  */
 export function getUser(userId) {
   const store = loadStore();
@@ -64,34 +89,68 @@ export function getUser(userId) {
 }
 
 /**
- * Upsert user profile
+ * Create a new user with hashed password
  */
-export function upsertUser(user) {
+export async function createUser({ name, email, password }) {
   const store = loadStore();
-  const existing = store.users[user.id] || {
-    id: user.id,
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const userId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const passwordHash = await bcrypt.hash(password, 10);
+  const namespace = getNamespaceForUser(userId);
+
+  const newUser = {
+    id: userId,
+    name: name.trim(),
+    email: normalizedEmail,
+    passwordHash,
+    namespace,
     repos: [],
     activeRepo: null,
     chats: {},
+    refreshToken: null,
     createdAt: new Date().toISOString(),
-  };
-
-  store.users[user.id] = {
-    ...existing,
-    email: user.email || existing.email,
-    name: user.name || existing.name,
-    picture: user.picture || existing.picture,
-    namespace: getNamespaceForUser(user.id),
-    chats: existing.chats || {},
     lastLoginAt: new Date().toISOString(),
   };
 
+  store.users[userId] = newUser;
   saveStore();
-  return store.users[user.id];
+  return newUser;
 }
 
 /**
- * Record a newly indexed repo for a user without deleting previous repos
+ * Validate password against stored bcrypt hash
+ */
+export async function validatePassword(user, password) {
+  if (!user || !user.passwordHash) return false;
+  return bcrypt.compare(password, user.passwordHash);
+}
+
+/**
+ * Store active refresh token
+ */
+export function updateRefreshToken(userId, refreshToken) {
+  const store = loadStore();
+  if (store.users[userId]) {
+    store.users[userId].refreshToken = refreshToken;
+    store.users[userId].lastLoginAt = new Date().toISOString();
+    saveStore();
+  }
+}
+
+/**
+ * Clear refresh token on logout
+ */
+export function clearRefreshToken(userId) {
+  const store = loadStore();
+  if (store.users[userId]) {
+    store.users[userId].refreshToken = null;
+    saveStore();
+  }
+}
+
+/**
+ * Record a newly indexed repo for a user
  */
 export function recordIndexedRepo(userId, repoData) {
   const store = loadStore();
@@ -212,8 +271,13 @@ export function clearChatHistory(userId, repoUrl) {
 
 export const userStore = {
   getNamespaceForUser,
+  sanitizeUser,
+  findUserByEmail,
   getUser,
-  upsertUser,
+  createUser,
+  validatePassword,
+  updateRefreshToken,
+  clearRefreshToken,
   recordIndexedRepo,
   setActiveRepo,
   getUserRepoData,
