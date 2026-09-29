@@ -187,6 +187,18 @@ html, body {
   gap: 10px;
   cursor: pointer;
   user-select: none;
+  text-decoration: none;
+  color: inherit;
+  transition: var(--transition-fast);
+}
+
+.nav-brand:hover .brand-title {
+  color: var(--orange-primary);
+}
+
+.nav-brand:hover .brand-badge {
+  transform: scale(1.05);
+  border-color: var(--orange-primary);
 }
 
 .brand-badge {

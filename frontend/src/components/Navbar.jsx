@@ -21,8 +21,19 @@ export default function Navbar({ onOpenIngest, onOpenAuth, isIndexed, totalChunk
   return (
     <header className="navbar-container">
       <nav className="floating-navbar">
-        {/* Brand */}
-        <div className="nav-brand">
+        {/* Brand / Home Link */}
+        <a
+          href="/"
+          className="nav-brand"
+          title="Return to Home"
+          onClick={(e) => {
+            e.preventDefault();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (window.location.hash || window.location.pathname !== '/') {
+              window.history.pushState(null, '', '/');
+            }
+          }}
+        >
           <div className="brand-badge">
             <span className="brand-dot"></span>
             <Sparkles size={16} className="brand-sparkle" />
@@ -31,7 +42,7 @@ export default function Navbar({ onOpenIngest, onOpenAuth, isIndexed, totalChunk
             <span className="brand-title">AI Codebase</span>
             <span className="brand-accent">Assistant</span>
           </div>
-        </div>
+        </a>
 
         {/* Center Navigation Links */}
         <div className="nav-links">
