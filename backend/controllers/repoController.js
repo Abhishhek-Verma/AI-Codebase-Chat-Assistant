@@ -6,7 +6,8 @@ import { userStore } from '../services/userStore.js';
  * POST /api/repo/index
  * Body: { repoUrl: string }
  *
- * Triggers the full ingestion pipeline into the user's isolated Pinecone namespace.
+ * Triggers the ingestion pipeline into the user's isolated Pinecone namespace.
+ * Multiple repositories persist without overwriting each other.
  */
 export async function indexRepo(req, res) {
   try {
@@ -22,24 +23,29 @@ export async function indexRepo(req, res) {
       return res.status(400).json({ error: 'Invalid GitHub URL format. Example: https://github.com/expressjs/express' });
     }
 
-    const userId = req.user?.id || 'guest_default';
-    const userNamespace = req.user?.namespace || userStore.getNamespaceForUser(userId);
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required. Please sign in with Google to index repositories.' });
+    }
+
+    const userNamespace = req.user.namespace || userStore.getNamespaceForUser(userId);
 
     const result = await indexRepository(repoUrl, 'main', userNamespace);
 
-    // Save to user store history
-    userStore.recordIndexedRepo(userId, {
+    // Save to user store history (persists multiple repositories)
+    const entry = userStore.recordIndexedRepo(userId, {
       repoUrl,
       totalFiles: result.totalFiles,
       totalChunks: result.totalChunks,
     });
 
     res.json({
-      message: 'Repository indexed successfully',
+      message: 'Repository indexed successfully and saved to your personal workspace',
       repo: repoUrl,
       totalFiles: result.totalFiles,
       totalChunks: result.totalChunks,
       namespace: userNamespace,
+      activeRepo: entry,
     });
   } catch (error) {
     console.error('[repoController] indexRepo error:', error);
@@ -49,16 +55,16 @@ export async function indexRepo(req, res) {
 
 /**
  * GET /api/repo/status
- * Returns current index status for the authenticated user's isolated namespace
+ * Returns index status for the authenticated user's active repository
  */
 export async function getStatus(req, res) {
   try {
     const userId = req.user?.id;
     if (!userId) {
-      return res.json({
+      return res.status(401).json({
         indexed: false,
         totalChunks: 0,
-        message: 'Sign in to view your indexed repositories',
+        message: 'Sign in with Google to access your indexed repositories',
         repos: [],
         activeRepo: null,
       });
@@ -67,12 +73,32 @@ export async function getStatus(req, res) {
     const userNamespace = req.user.namespace || userStore.getNamespaceForUser(userId);
     const { repos, activeRepo } = userStore.getUserRepoData(userId);
 
-    const status = await vectorService.getIndexStatus(userNamespace, activeRepo?.repoUrl);
+    if (!activeRepo) {
+      return res.json({
+        indexed: false,
+        totalChunks: 0,
+        repo: null,
+        namespace: userNamespace,
+        repos: repos || [],
+        activeRepo: null,
+        user: {
+          id: req.user.id,
+          name: req.user.name,
+          email: req.user.email,
+          picture: req.user.picture,
+        },
+      });
+    }
+
+    const status = await vectorService.getIndexStatus(userNamespace, activeRepo.repoUrl, activeRepo.totalChunks);
 
     res.json({
-      ...status,
+      indexed: true,
+      totalChunks: activeRepo.totalChunks || status.totalChunks,
+      repo: activeRepo.repoUrl,
+      namespace: userNamespace,
       repos: repos || [],
-      activeRepo: activeRepo || null,
+      activeRepo: activeRepo,
       user: {
         id: req.user.id,
         name: req.user.name,
@@ -129,13 +155,12 @@ export async function selectRepo(req, res) {
 
     const { repos, activeRepo } = userStore.getUserRepoData(userId);
     const userNamespace = req.user.namespace || userStore.getNamespaceForUser(userId);
-    const status = await vectorService.getIndexStatus(userNamespace, activeRepo?.repoUrl);
 
     res.json({
       success: true,
       activeRepo,
       repos,
-      totalChunks: status.totalChunks,
+      totalChunks: activeRepo?.totalChunks || 0,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

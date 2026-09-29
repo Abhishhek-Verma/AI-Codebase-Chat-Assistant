@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Message from './Message';
-import { streamChat } from '../services/api';
-import { Send, Sparkles, MessageSquare, FileCode, Trash2, Zap, GitBranch, ArrowUpRight } from 'lucide-react';
+import { streamChat, fetchChatHistory, clearChatHistoryApi } from '../services/api';
+import { Send, Sparkles, MessageSquare, FileCode, Trash2, Zap, GitBranch, ArrowUpRight, LogIn, History } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const SUGGESTIONS = [
   'Where is authentication implemented?',
@@ -10,15 +11,13 @@ const SUGGESTIONS = [
   'What vector database models and schemas exist?',
 ];
 
-/**
- * ChatBox component - message list + input bar with multi-turn support
- * Styled with NextStepAI glass aesthetics and coral accents
- */
-export default function ChatBox({ isIndexed, onOpenIngest }) {
+export default function ChatBox({ isIndexed, onOpenIngest, onOpenAuth }) {
+  const { user, isAuthenticated, activeRepo } = useAuth();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [references, setReferences] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -26,6 +25,38 @@ export default function ChatBox({ isIndexed, onOpenIngest }) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, references]);
+
+  // Load persistent chat history whenever active repository or authentication state changes
+  useEffect(() => {
+    if (isAuthenticated && activeRepo?.repoUrl) {
+      loadHistory(activeRepo.repoUrl);
+    } else {
+      setMessages([]);
+      setReferences([]);
+    }
+  }, [isAuthenticated, activeRepo?.repoUrl]);
+
+  const loadHistory = async (repoUrl) => {
+    setIsLoadingHistory(true);
+    try {
+      const history = await fetchChatHistory(repoUrl);
+      if (history && history.length > 0) {
+        setMessages(
+          history.map((m) => ({
+            role: m.role,
+            content: m.content,
+            isStreaming: false,
+          }))
+        );
+      } else {
+        setMessages([]);
+      }
+    } catch {
+      setMessages([]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
 
   // Auto-resize textarea
   useEffect(() => {
@@ -43,14 +74,27 @@ export default function ChatBox({ isIndexed, onOpenIngest }) {
       .map((m) => ({ role: m.role, content: m.content }));
   };
 
-  const handleClear = () => {
+  const handleClear = async () => {
     setMessages([]);
     setReferences([]);
+    if (activeRepo?.repoUrl) {
+      try {
+        await clearChatHistoryApi(activeRepo.repoUrl);
+      } catch (err) {
+        console.error('Failed to clear remote chat history:', err);
+      }
+    }
   };
 
   const handleSend = async (question = input) => {
-    // Strictly prevent asking questions if repo is not indexed
-    if (!isIndexed) {
+    // Check compulsory Google authentication first
+    if (!isAuthenticated) {
+      if (onOpenAuth) onOpenAuth();
+      return;
+    }
+
+    // Check if repository is indexed
+    if (!isIndexed || !activeRepo?.repoUrl) {
       if (onOpenIngest) onOpenIngest();
       return;
     }
@@ -102,18 +146,19 @@ export default function ChatBox({ isIndexed, onOpenIngest }) {
       (error) => {
         setMessages((prev) => {
           const updated = [...prev];
-          const isNotIndexed = error.includes('No indexed codebase found');
+          const isNotIndexed = error.includes('No indexed') || error.includes('not found');
           updated[updated.length - 1] = {
             role: 'bot',
             content: isNotIndexed
-              ? `💡 **No repository has been indexed yet.**\n\nClick the **"Index Repo"** button in the navbar above or the hero button to index any public GitHub repository first!`
-              : `⚠️ **Query Failed:** ${error}\n\n*If you haven't yet, please add your \`GROQ_API_KEY\` to \`backend/.env\`.*`,
+              ? `💡 **No repository has been indexed yet.**\n\nClick the **"Index Repo"** button in the navbar above to index any public GitHub repository first!`
+              : `⚠️ **Query Failed:** ${error}\n\n*Please ensure your GROQ_API_KEY is configured in backend/.env.*`,
             isStreaming: false,
           };
           return updated;
         });
         setIsStreaming(false);
-      }
+      },
+      activeRepo?.repoUrl
     );
   };
 
@@ -123,6 +168,10 @@ export default function ChatBox({ isIndexed, onOpenIngest }) {
       handleSend();
     }
   };
+
+  const repoDisplayName = activeRepo?.repoUrl
+    ? activeRepo.repoUrl.replace('https://github.com/', '')
+    : null;
 
   return (
     <div className="chat-card-container">
@@ -135,19 +184,30 @@ export default function ChatBox({ isIndexed, onOpenIngest }) {
           <div>
             <h2 className="chat-header-title">Codebase Q&A Console</h2>
             <p className="chat-header-sub">
-              {isIndexed ? 'Connected to vector store' : 'Awaiting repository indexing'}
+              {isAuthenticated && repoDisplayName
+                ? `Active Repository: ${repoDisplayName} (${activeRepo?.totalChunks || 0} chunks)`
+                : isIndexed
+                ? 'Connected to vector store'
+                : 'Awaiting repository indexing'}
             </p>
           </div>
         </div>
 
         <div className="header-right">
+          {isAuthenticated && messages.length > 0 && (
+            <div className="history-pill-badge" title="Persistent conversation saved to your account">
+              <History size={12} className="text-orange" />
+              <span>Persistent Chat</span>
+            </div>
+          )}
+
           <div className="engine-pill">
             <Zap size={13} className="text-orange" />
-            <span>Groq LLaMA 3.3</span>
+            <span>Groq LPU Engine</span>
           </div>
 
           {messages.length > 0 && (
-            <button onClick={handleClear} className="btn-clear-chat" title="Clear conversation">
+            <button onClick={handleClear} className="btn-clear-chat" title="Clear conversation for this repository">
               <Trash2 size={13} />
               <span>Clear</span>
             </button>
@@ -162,35 +222,58 @@ export default function ChatBox({ isIndexed, onOpenIngest }) {
             <div className="empty-sparkle-circle">
               <Sparkles size={32} className="text-orange" />
             </div>
-            <h3 className="empty-title">Ask anything about your code</h3>
+            <h3 className="empty-title">
+              {!isAuthenticated
+                ? 'Sign in with Google to explore any codebase'
+                : isIndexed
+                ? `Ask anything about ${repoDisplayName || 'your codebase'}`
+                : 'Index a repository to get started'}
+            </h3>
             <p className="empty-description">
-              Query functions, architecture decisions, data models, or error flows. Groq will stream back answers with verified file and line citations.
+              {!isAuthenticated
+                ? 'Sign in with Google to index repositories into your private Pinecone namespace. Your code chunks and chat history persist permanently across visits.'
+                : 'Query functions, architecture decisions, data models, or error flows. Groq will stream back answers with verified file and line citations.'}
             </p>
 
-            {!isIndexed && (
+            {!isAuthenticated ? (
+              <button className="btn-empty-index" onClick={onOpenAuth}>
+                <LogIn size={15} />
+                <span>Sign In with Google to Begin</span>
+              </button>
+            ) : !isIndexed ? (
               <button className="btn-empty-index" onClick={onOpenIngest}>
                 <GitBranch size={15} />
-                <span>Index a GitHub Repository to Begin</span>
+                <span>Index a GitHub Repository</span>
               </button>
-            )}
+            ) : null}
 
             <div className="suggestions-container">
               <span className="suggestions-label">
-                {isIndexed ? 'Try asking:' : 'Sample queries (available after indexing):'}
+                {isIndexed && isAuthenticated
+                  ? 'Try asking:'
+                  : 'Sample queries (available after indexing):'}
               </span>
               <div className="suggestion-chips-grid">
                 {SUGGESTIONS.map((s, idx) => (
                   <button
                     key={idx}
-                    className={`suggestion-chip-pill ${!isIndexed ? 'chip-locked' : ''}`}
+                    className={`suggestion-chip-pill ${!isIndexed || !isAuthenticated ? 'chip-locked' : ''}`}
                     onClick={() => {
-                      if (!isIndexed) {
+                      if (!isAuthenticated) {
+                        if (onOpenAuth) onOpenAuth();
+                      } else if (!isIndexed) {
                         if (onOpenIngest) onOpenIngest();
                       } else {
                         handleSend(s);
                       }
                     }}
-                    title={!isIndexed ? 'Index a repository first to ask this' : s}
+                    title={
+                      !isAuthenticated
+                        ? 'Sign in with Google to ask this'
+                        : !isIndexed
+                        ? 'Index a repository first to ask this'
+                        : s
+                    }
                   >
                     <span>{s}</span>
                     <ArrowUpRight size={13} className="chip-arrow" />
@@ -234,37 +317,54 @@ export default function ChatBox({ isIndexed, onOpenIngest }) {
 
       {/* Chat Input Bar */}
       <div className="chat-input-bar">
-        <div className={`input-pill-wrapper ${!isIndexed ? 'input-wrapper-disabled' : ''}`}>
+        <div
+          className={`input-pill-wrapper ${
+            !isAuthenticated || !isIndexed ? 'input-wrapper-disabled' : ''
+          }`}
+        >
           <textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
-              isIndexed
-                ? 'Ask a question about the repository... (Press Enter to send)'
+              !isAuthenticated
+                ? '🔒 Please sign in with Google to enable questioning...'
+                : isIndexed
+                ? `Ask a question about ${repoDisplayName || 'the repository'}... (Press Enter to send)`
                 : '🔒 Index a repository first to enable asking questions...'
             }
-            disabled={!isIndexed || isStreaming}
+            disabled={!isAuthenticated || !isIndexed || isStreaming}
             rows={1}
           />
           <button
             className="btn-send-pill"
             onClick={() => handleSend()}
-            disabled={!isIndexed || !input.trim() || isStreaming}
+            disabled={!isAuthenticated || !isIndexed || !input.trim() || isStreaming}
             aria-label="Send query"
-            title={!isIndexed ? 'Please index a repository first' : 'Send question'}
+            title={
+              !isAuthenticated
+                ? 'Please sign in with Google'
+                : !isIndexed
+                ? 'Please index a repository first'
+                : 'Send question'
+            }
           >
             <Send size={16} />
           </button>
         </div>
-        {!isIndexed ? (
+
+        {!isAuthenticated ? (
+          <div className="input-locked-banner" onClick={onOpenAuth} role="button" tabIndex={0}>
+            <span>🔒 Authentication required: <strong>Sign in with Google</strong> to index repositories and access persistent chats.</span>
+          </div>
+        ) : !isIndexed ? (
           <div className="input-locked-banner" onClick={onOpenIngest} role="button" tabIndex={0}>
             <span>⚠️ Questions are locked. <strong>Click here to index a repository first</strong> to start querying.</span>
           </div>
         ) : (
           <div className="input-footer-hint">
-            <span>Groq LLaMA 3.3 · RAG Context Engine · Line-by-line Source References</span>
+            <span>Groq LPU Engine · Persistent Chat History · Line-by-line Source References</span>
           </div>
         )}
       </div>

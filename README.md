@@ -24,7 +24,9 @@ An intelligent code exploration and repository Q&A platform with **strict multi-
 - **🌲 Pinecone Cloud Vector Engine**: 1536-dimensional vector space with metadata filtering (file paths, line spans, programming language, repository tags).
 - **🎯 Two-Stage Retrieval & Semantic Re-ranking**: Fast candidate search (top-20) filtered by metadata, followed by keyword overlap and syntactic definition boosting to isolate the top-5 most relevant chunks.
 - **📎 Grounded Source Citations**: Every answer provides verified file paths, language tags, and line numbers (`file.js:L15-L42`) with interactive UI citation chips.
-- **🔄 Multi-Repository History & Switching**: Users can index multiple repositories over time and switch their active repository instantly without having to re-fetch or re-index.
+- **🔄 Multi-Repository History & Instant Switching**: Users can index multiple repositories in their personal workspace and switch between them anytime—zero repeat indexing needed.
+- **💬 Persistent Multi-Turn Chat History**: Conversations are saved per-repository and restored automatically whenever a user switches repositories or returns to the platform.
+- **🔐 Mandatory Google Login for Private Workspaces**: Ingestion and queries require Google authentication, ensuring all codebases, AST chunks, and discussions stay 100% private to the user's account.
 - **🎨 Editorial Modern UI**: Styled with frosted glassmorphism, responsive navigation, syntax-highlighted code blocks, copy-to-clipboard, and query locking safeguards.
 - **🛡️ Resilience & Fallback Engine**: Multi-provider embedding strategy that gracefully degrades to avoid pipeline halts during external provider rate limits.
 

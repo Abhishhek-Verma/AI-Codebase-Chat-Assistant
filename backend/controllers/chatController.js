@@ -8,36 +8,40 @@ import { userStore } from '../services/userStore.js';
 /**
  * POST /api/chat/query
  *
- * Body: { question: string, history?: Array<{role, content}> }
- *
- * Pipeline:
- *   1. embeddingService.generateEmbedding(question)
- *   2. vectorService.search(queryVector, 20, userNamespace) -> isolated to user!
- *   3. retrievalService.filter(chunks)
- *   4. rerank(query, chunks)
- *   5. llmService.streamAnswer(prompt)
- *   6. SSE stream to frontend
+ * Body: { question: string, history?: Array<{role, content}>, repoUrl?: string }
  */
 export async function queryChat(req, res) {
   try {
-    const { question, history = [] } = req.body;
+    const { question, history = [], repoUrl } = req.body;
 
     if (!question || typeof question !== 'string') {
       return res.status(400).json({ error: 'Question is required' });
     }
 
-    const userId = req.user?.id || 'guest_default';
-    const userNamespace = req.user?.namespace || userStore.getNamespaceForUser(userId);
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Please sign in with Google to chat.' });
+    }
+
+    const userNamespace = req.user.namespace || userStore.getNamespaceForUser(userId);
+    const { activeRepo } = userStore.getUserRepoData(userId);
+    const targetRepo = repoUrl || activeRepo?.repoUrl;
+
+    if (!targetRepo) {
+      return res.status(400).json({
+        error: 'No active repository selected. Please index or select a repository first.',
+      });
+    }
 
     // 1. Generate embedding for the query
     const queryVector = await embeddingService.generateEmbedding(question);
 
-    // 2. Vector similarity search (top-20 candidates) strictly within the user's isolated namespace
-    const candidates = await vectorService.search(queryVector, 20, userNamespace);
+    // 2. Vector similarity search filtered strictly by user namespace AND target repository
+    const candidates = await vectorService.search(queryVector, 20, userNamespace, targetRepo);
 
     if (!candidates || candidates.length === 0) {
       return res.status(404).json({
-        error: 'No indexed codebase found in your session. Please index a repository first before asking questions.',
+        error: `No indexed chunks found for repository "${targetRepo}". Please index it first.`,
       });
     }
 
@@ -63,7 +67,7 @@ export async function queryChat(req, res) {
             .join('\n\n')}\n`
         : '';
 
-    const prompt = `You are an expert code assistant. Answer the developer's question using ONLY the provided code context. Always cite the file name and line numbers.
+    const prompt = `You are an expert code assistant. Answer the developer's question using ONLY the provided code context from repository ${targetRepo}. Always cite the file name and line numbers.
 
 ## Code Context
 ${context}
@@ -85,8 +89,10 @@ ${question}
     res.setHeader('X-Accel-Buffering', 'no');
 
     const stream = await llmService.streamAnswer(prompt);
+    let fullResponse = '';
 
     for await (const chunk of stream) {
+      fullResponse += chunk;
       res.write(`data: ${JSON.stringify({ token: chunk })}\n\n`);
     }
 
@@ -99,6 +105,10 @@ ${question}
     }));
     res.write(`data: ${JSON.stringify({ references: refs })}\n\n`);
 
+    // Persist conversation in user store
+    userStore.saveChatMessage(userId, targetRepo, { role: 'user', content: question.trim() });
+    userStore.saveChatMessage(userId, targetRepo, { role: 'bot', content: fullResponse, references: refs });
+
     res.write('data: [DONE]\n\n');
     res.end();
   } catch (error) {
@@ -110,5 +120,41 @@ ${question}
       res.write('data: [DONE]\n\n');
       res.end();
     }
+  }
+}
+
+/**
+ * GET /api/chat/history
+ * Query params: ?repoUrl=...
+ */
+export async function getChatHistory(req, res) {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    const { repoUrl } = req.query;
+    const history = userStore.getChatHistory(userId, repoUrl);
+    res.json({ history: history || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * DELETE /api/chat/history
+ * Query params: ?repoUrl=...
+ */
+export async function clearChatHistory(req, res) {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    const { repoUrl } = req.query;
+    userStore.clearChatHistory(userId, repoUrl);
+    res.json({ success: true, message: 'Chat history cleared for this repository' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 }

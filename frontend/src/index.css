@@ -2090,6 +2090,64 @@ html, body {
   color: var(--orange-primary);
 }
 
+/* Auth Required Notice inside Modal */
+.auth-required-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff7ed;
+  border: 1.5px solid #fed7aa;
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin: 14px 24px 0;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.auth-required-banner:hover {
+  background: #ffedd5;
+  border-color: var(--orange-primary);
+}
+
+.auth-required-text {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #9a3412;
+}
+
+.btn-banner-login {
+  background: var(--orange-gradient);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-full);
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px var(--orange-glow);
+  transition: var(--transition-fast);
+}
+
+.btn-banner-login:hover {
+  transform: translateY(-1px);
+}
+
+/* History Pill Badge */
+.history-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 700;
+  color: #065f46;
+}
+
 /* ── Responsive Adaptations ──────────────────────────────── */
 @media (max-width: 768px) {
   .nav-links {

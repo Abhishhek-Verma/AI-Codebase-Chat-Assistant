@@ -1,7 +1,8 @@
 /**
  * User Store Service
  * 
- * Persistent storage for user profiles and their indexed repositories.
+ * Persistent storage for user profiles, indexed repositories,
+ * and persistent chat conversations per repository.
  * Stored in backend/data/user_store.json.
  */
 
@@ -50,7 +51,6 @@ function saveStore() {
  */
 export function getNamespaceForUser(userId) {
   if (!userId) return 'default';
-  // Pinecone namespace: alphanumeric, underscore, hyphen
   const clean = userId.replace(/[^a-zA-Z0-9_-]/g, '_');
   return `ns_${clean.slice(0, 50)}`;
 }
@@ -72,6 +72,7 @@ export function upsertUser(user) {
     id: user.id,
     repos: [],
     activeRepo: null,
+    chats: {},
     createdAt: new Date().toISOString(),
   };
 
@@ -81,6 +82,7 @@ export function upsertUser(user) {
     name: user.name || existing.name,
     picture: user.picture || existing.picture,
     namespace: getNamespaceForUser(user.id),
+    chats: existing.chats || {},
     lastLoginAt: new Date().toISOString(),
   };
 
@@ -89,12 +91,15 @@ export function upsertUser(user) {
 }
 
 /**
- * Record a newly indexed repo for a user
+ * Record a newly indexed repo for a user without deleting previous repos
  */
 export function recordIndexedRepo(userId, repoData) {
   const store = loadStore();
   const user = store.users[userId];
   if (!user) return;
+
+  if (!user.repos) user.repos = [];
+  if (!user.chats) user.chats = {};
 
   const repoIndex = user.repos.findIndex((r) => r.repoUrl === repoData.repoUrl);
   const entry = {
@@ -148,9 +153,61 @@ export function getUserRepoData(userId) {
   const active = user.repos.find((r) => r.repoUrl === user.activeRepo) || user.repos[0] || null;
 
   return {
-    repos: user.repos,
+    repos: user.repos || [],
     activeRepo: active,
   };
+}
+
+/**
+ * Get persistent chat history for a specific repository
+ */
+export function getChatHistory(userId, repoUrl) {
+  const store = loadStore();
+  const user = store.users[userId];
+  if (!user || !user.chats) return [];
+  const targetRepo = repoUrl || user.activeRepo;
+  if (!targetRepo) return [];
+  return user.chats[targetRepo] || [];
+}
+
+/**
+ * Append a chat message to persistent history for a repository
+ */
+export function saveChatMessage(userId, repoUrl, message) {
+  const store = loadStore();
+  const user = store.users[userId];
+  if (!user) return;
+  if (!user.chats) user.chats = {};
+
+  const targetRepo = repoUrl || user.activeRepo;
+  if (!targetRepo) return;
+
+  if (!user.chats[targetRepo]) {
+    user.chats[targetRepo] = [];
+  }
+
+  user.chats[targetRepo].push({
+    role: message.role,
+    content: message.content,
+    references: message.references || [],
+    timestamp: new Date().toISOString(),
+  });
+
+  saveStore();
+}
+
+/**
+ * Clear chat history for a repository
+ */
+export function clearChatHistory(userId, repoUrl) {
+  const store = loadStore();
+  const user = store.users[userId];
+  if (!user || !user.chats) return;
+  const targetRepo = repoUrl || user.activeRepo;
+  if (targetRepo && user.chats[targetRepo]) {
+    user.chats[targetRepo] = [];
+    saveStore();
+  }
 }
 
 export const userStore = {
@@ -160,4 +217,7 @@ export const userStore = {
   recordIndexedRepo,
   setActiveRepo,
   getUserRepoData,
+  getChatHistory,
+  saveChatMessage,
+  clearChatHistory,
 };

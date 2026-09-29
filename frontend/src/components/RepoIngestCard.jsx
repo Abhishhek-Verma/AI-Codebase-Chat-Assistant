@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { GitBranch, Database, Loader2, CheckCircle2, AlertCircle, X, Sparkles, Shield, Check, ArrowRight } from 'lucide-react';
+import { GitBranch, Database, Loader2, CheckCircle2, AlertCircle, X, Sparkles, Shield, Check, ArrowRight, LogIn } from 'lucide-react';
 import { indexRepository } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-export default function RepoIngestCard({ isOpen, onClose, indexStatus, onIndexed }) {
-  const { user, repos, activeRepo, selectRepo, updateRepoData } = useAuth();
+export default function RepoIngestCard({ isOpen, onClose, indexStatus, onIndexed, onOpenAuth }) {
+  const { user, isAuthenticated, repos, activeRepo, selectRepo, updateRepoData } = useAuth();
   const [repoUrl, setRepoUrl] = useState('');
   const [isIngesting, setIsIngesting] = useState(false);
   const [ingestError, setIngestError] = useState('');
@@ -15,6 +15,13 @@ export default function RepoIngestCard({ isOpen, onClose, indexStatus, onIndexed
 
   const handleIngest = async (e) => {
     e.preventDefault();
+
+    // Compulsory Google Login requirement!
+    if (!isAuthenticated) {
+      if (onOpenAuth) onOpenAuth();
+      return;
+    }
+
     if (!repoUrl.trim() || isIngesting) return;
 
     setIsIngesting(true);
@@ -89,19 +96,31 @@ export default function RepoIngestCard({ isOpen, onClose, indexStatus, onIndexed
           </button>
         </div>
 
-        {/* Namespace privacy pill */}
-        <div className="card-namespace-indicator">
-          <Shield size={13} className="text-orange" />
-          <span>
-            Active Namespace: <strong>{user?.namespace || 'ns_guest_private'}</strong>
-            {user ? ` (${user.name})` : ' (Guest Session)'}
-          </span>
-        </div>
+        {/* Namespace privacy pill or Login Required Notice */}
+        {isAuthenticated ? (
+          <div className="card-namespace-indicator">
+            <Shield size={13} className="text-orange" />
+            <span>
+              Active Namespace: <strong>{user?.namespace}</strong> ({user?.name || user?.email})
+            </span>
+          </div>
+        ) : (
+          <div className="auth-required-banner" onClick={onOpenAuth} role="button" tabIndex={0}>
+            <LogIn size={15} className="text-orange" />
+            <div className="auth-required-text">
+              <span className="banner-title">Google Sign-In Required:</span>
+              <span className="banner-sub"> Please sign in with Google to index repositories and save them permanently to your workspace.</span>
+            </div>
+            <button type="button" className="btn-banner-login" onClick={onOpenAuth}>
+              Sign In
+            </button>
+          </div>
+        )}
 
         {/* Previous Repositories List */}
-        {repos && repos.length > 0 && (
+        {isAuthenticated && repos && repos.length > 0 && (
           <div className="previous-repos-container">
-            <label className="section-mini-label">Your Indexed Repositories</label>
+            <label className="section-mini-label">Your Indexed Repositories (Switch Anytime without Re-indexing)</label>
             <div className="previous-repos-list">
               {repos.map((r) => {
                 const isActive = activeRepo?.repoUrl === r.repoUrl || indexStatus?.repo === r.repoUrl;
@@ -160,17 +179,22 @@ export default function RepoIngestCard({ isOpen, onClose, indexStatus, onIndexed
                 value={repoUrl}
                 onChange={(e) => setRepoUrl(e.target.value)}
                 placeholder="https://github.com/facebook/react or https://github.com/expressjs/express"
-                disabled={isIngesting}
+                disabled={isIngesting || !isAuthenticated}
               />
               <button
                 type="submit"
                 className="btn-card-submit"
-                disabled={!repoUrl.trim() || isIngesting}
+                disabled={isIngesting || (!isAuthenticated && false)}
               >
                 {isIngesting ? (
                   <>
                     <Loader2 size={15} className="spinner" />
                     <span>Indexing...</span>
+                  </>
+                ) : !isAuthenticated ? (
+                  <>
+                    <LogIn size={15} />
+                    <span>Sign In to Index</span>
                   </>
                 ) : (
                   <>
@@ -189,7 +213,7 @@ export default function RepoIngestCard({ isOpen, onClose, indexStatus, onIndexed
             <Loader2 size={16} className="spinner" />
             <div>
               <p className="notice-title">Pipeline Running</p>
-              <p className="notice-sub">Fetching repository tree, chunking AST nodes, and syncing vectors to Pinecone namespace...</p>
+              <p className="notice-sub">Fetching repository tree, chunking AST nodes, and syncing vectors to your permanent Pinecone namespace...</p>
             </div>
           </div>
         )}

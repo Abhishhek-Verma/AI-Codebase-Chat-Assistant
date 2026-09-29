@@ -1,26 +1,12 @@
 /**
- * API Service with Multi-Tenant Authentication & Session Support
+ * API Service with Multi-Tenant Google Authentication & Persistent Chat
  *
  * Handles communication with the backend API, automatically attaching
- * Google OAuth bearer tokens or isolated guest session headers.
+ * Google OAuth bearer tokens.
  */
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
 const TOKEN_KEY = 'codebase_auth_token';
-const GUEST_KEY = 'codebase_guest_session_id';
-
-/**
- * Get or generate persistent unique guest session ID
- */
-export function getGuestSessionId() {
-  let sessionId = localStorage.getItem(GUEST_KEY);
-  if (!sessionId) {
-    sessionId = 'guest_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
-    localStorage.setItem(GUEST_KEY, sessionId);
-  }
-  return sessionId;
-}
 
 export function getStoredToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -50,8 +36,6 @@ function getHeaders(extraHeaders = {}) {
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
-  } else {
-    headers['x-client-session'] = getGuestSessionId();
   }
 
   return headers;
@@ -70,28 +54,6 @@ export async function loginWithGoogle(credential) {
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to sign in with Google');
-  }
-
-  const data = await response.json();
-  if (data.token) {
-    setStoredToken(data.token);
-  }
-  return data;
-}
-
-/**
- * Login with 1-click Demo Account (Candidate Interviewer, Lead Dev, Guest)
- */
-export async function loginWithDemo(demoType = 'candidate_reviewer') {
-  const response = await fetch(`${BASE_URL}/auth/demo`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ demoType }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to authenticate demo account');
   }
 
   const data = await response.json();
@@ -175,14 +137,50 @@ export async function switchActiveRepo(repoUrl) {
 }
 
 /**
+ * Fetch persistent chat history for a repository
+ */
+export async function fetchChatHistory(repoUrl) {
+  const token = getStoredToken();
+  if (!token) return [];
+
+  try {
+    const query = repoUrl ? `?repoUrl=${encodeURIComponent(repoUrl)}` : '';
+    const response = await fetch(`${BASE_URL}/chat/history${query}`, {
+      headers: getHeaders(),
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.history || [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Clear chat history for a repository
+ */
+export async function clearChatHistoryApi(repoUrl) {
+  const query = repoUrl ? `?repoUrl=${encodeURIComponent(repoUrl)}` : '';
+  const response = await fetch(`${BASE_URL}/chat/history${query}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Failed to clear chat history');
+  }
+  return response.json();
+}
+
+/**
  * Send a chat query and receive streaming response from user's isolated namespace
  */
-export async function streamChat(question, history, onToken, onRefs, onDone, onError) {
+export async function streamChat(question, history, onToken, onRefs, onDone, onError, repoUrl = null) {
   try {
     const response = await fetch(`${BASE_URL}/chat/query`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ question, history }),
+      body: JSON.stringify({ question, history, repoUrl }),
     });
 
     if (!response.ok) {

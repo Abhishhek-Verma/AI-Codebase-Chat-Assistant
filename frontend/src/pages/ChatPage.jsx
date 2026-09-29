@@ -89,6 +89,7 @@ export default function ChatPage() {
           <ChatBox
             isIndexed={indexStatus?.indexed || false}
             onOpenIngest={() => setIsIngestOpen(true)}
+            onOpenAuth={() => setIsAuthOpen(true)}
           />
         </section>
 
@@ -101,6 +102,10 @@ export default function ChatPage() {
         isOpen={isIngestOpen}
         onClose={() => setIsIngestOpen(false)}
         indexStatus={indexStatus}
+        onOpenAuth={() => {
+          setIsIngestOpen(false);
+          setIsAuthOpen(true);
+        }}
         onIndexed={(newStatus) => {
           setIndexStatus(newStatus);
           setIsIngestOpen(false);

@@ -6,7 +6,7 @@
  *   2. fileParser → filter relevant files
  *   3. chunkCode → AST-aware code chunking
  *   4. embeddingService → generate embeddings
- *   5. vectorService → store in Pinecone (isolated by tenant namespace)
+ *   5. vectorService → store in Pinecone (isolated by tenant namespace and repo tag)
  */
 
 import { loadRepository, fetchFileContent } from '../ingestion/githubLoader.js';
@@ -49,8 +49,8 @@ export async function indexRepository(repoUrl, branch = 'main', namespace = 'def
   const texts = allChunks.map((chunk) => chunk.text);
   const embeddings = await embeddingService.generateBatchEmbeddings(texts);
 
-  // Step 5: Store in vector database under tenant namespace
-  await vectorService.createIndex(allChunks, embeddings, namespace);
+  // Step 5: Store in vector database under tenant namespace with repo tag
+  await vectorService.createIndex(allChunks, embeddings, namespace, repoUrl);
 
   return {
     totalFiles: relevantFiles.length,

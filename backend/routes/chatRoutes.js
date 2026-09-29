@@ -1,20 +1,28 @@
 import { Router } from 'express';
-import { queryChat } from '../controllers/chatController.js';
+import { queryChat, getChatHistory, clearChatHistory } from '../controllers/chatController.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
 
 const router = Router();
 
-/**
- * Apply auth middleware to chat queries
- * Isolates vector similarity search to req.user.namespace
- */
+// Require Google login for all chat endpoints
 router.use(requireAuth);
 
 /**
  * POST /api/chat/query
- * Body: { question: string, history?: array }
- * Response: SSE stream of LLM answer using context retrieved from user's namespace
+ * Stream answer via SSE and persist to user's chat history for this repo
  */
 router.post('/query', queryChat);
+
+/**
+ * GET /api/chat/history?repoUrl=...
+ * Fetch persistent conversation history for this repo
+ */
+router.get('/history', getChatHistory);
+
+/**
+ * DELETE /api/chat/history?repoUrl=...
+ * Clear conversation history for this repo
+ */
+router.delete('/history', clearChatHistory);
 
 export default router;

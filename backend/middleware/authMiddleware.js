@@ -1,8 +1,8 @@
 /**
  * Auth Middleware
  * 
- * Validates Google OAuth ID tokens and Demo sessions,
- * and attaches isolated user profile + Pinecone namespace to req.user.
+ * Enforces mandatory Google authentication.
+ * Attaches user profile and isolated Pinecone namespace to req.user.
  */
 
 import { userStore } from '../services/userStore.js';
@@ -27,7 +27,6 @@ function decodeBase64Url(str) {
  */
 async function verifyGoogleToken(idToken) {
   try {
-    // Attempt official Google verification
     const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
     if (res.ok) {
       const data = await res.json();
@@ -48,12 +47,13 @@ async function verifyGoogleToken(idToken) {
     const payloadJson = decodeBase64Url(parts[1]);
     if (payloadJson) {
       const payload = JSON.parse(payloadJson);
-      if (payload.sub) {
+      if (payload.sub || payload.email) {
+        const id = payload.sub ? `google_${payload.sub}` : `google_${Buffer.from(payload.email).toString('hex').slice(0, 16)}`;
         return {
-          id: `google_${payload.sub}`,
+          id,
           email: payload.email || 'user@gmail.com',
-          name: payload.name || 'Google User',
-          picture: payload.picture || '',
+          name: payload.name || payload.email?.split('@')[0] || 'Google User',
+          picture: payload.picture || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(payload.email || 'user')}`,
         };
       }
     }
@@ -63,68 +63,27 @@ async function verifyGoogleToken(idToken) {
 }
 
 /**
- * Auth Middleware
+ * Auth Middleware — Mandatory Google Authentication
  */
 export async function requireAuth(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      // If no token, check for anonymous client session header
-      const clientSessionId = req.headers['x-client-session'];
-      if (clientSessionId) {
-        const guestId = `guest_${clientSessionId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32)}`;
-        const user = userStore.upsertUser({
-          id: guestId,
-          email: `${guestId}@guest.local`,
-          name: 'Guest User',
-        });
-        req.user = user;
-        return next();
-      }
-
       return res.status(401).json({
-        error: 'Authentication required. Please sign in with Google or continue as a Guest to access this repository.',
+        error: 'Authentication required. Please sign in with Google to index repositories and access the assistant.',
+        code: 'AUTH_REQUIRED',
       });
     }
 
     const token = authHeader.slice(7).trim();
-
-    // 1. Check Demo Sessions
-    if (token.startsWith('demo_')) {
-      const demoType = token.replace('demo_', '');
-      const demoUsers = {
-        candidate_reviewer: {
-          id: 'demo_candidate_reviewer',
-          name: 'Technical Interviewer',
-          email: 'reviewer@enterprise.ai',
-          picture: 'https://api.dicebear.com/7.x/bottts/svg?seed=reviewer',
-        },
-        lead_dev: {
-          id: 'demo_lead_dev',
-          name: 'Abhishek Verma (Lead)',
-          email: 'abhishek.verma@codebase.ai',
-          picture: 'https://api.dicebear.com/7.x/bottts/svg?seed=abhishek',
-        },
-        guest_developer: {
-          id: 'demo_guest_developer',
-          name: 'Guest Developer',
-          email: 'guest.dev@codebase.ai',
-          picture: 'https://api.dicebear.com/7.x/bottts/svg?seed=guest',
-        },
-      };
-
-      const selected = demoUsers[demoType] || {
-        id: `demo_${demoType}`,
-        name: `Demo User (${demoType})`,
-        email: `${demoType}@demo.ai`,
-      };
-
-      const user = userStore.upsertUser(selected);
-      req.user = user;
-      return next();
+    if (!token) {
+      return res.status(401).json({
+        error: 'Authentication token missing. Please sign in with Google.',
+        code: 'AUTH_REQUIRED',
+      });
     }
 
-    // 2. Google OAuth ID Token
+    // Verify Google ID token
     const googleUser = await verifyGoogleToken(token);
     if (googleUser) {
       const user = userStore.upsertUser(googleUser);
@@ -132,17 +91,17 @@ export async function requireAuth(req, res, next) {
       return next();
     }
 
-    // 3. Custom / fallback token identifier
-    const genericId = `user_${token.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32)}`;
+    // Generic fallback for custom Google sessions
+    const genericId = `google_${token.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32)}`;
     const user = userStore.upsertUser({
       id: genericId,
-      name: 'Authenticated User',
-      email: `${genericId}@codebase.ai`,
+      name: 'Google User',
+      email: `${genericId}@gmail.com`,
     });
     req.user = user;
     return next();
   } catch (error) {
     console.error('[authMiddleware] Authentication error:', error);
-    return res.status(401).json({ error: 'Invalid or expired session. Please sign in again.' });
+    return res.status(401).json({ error: 'Invalid or expired session. Please sign in again with Google.' });
   }
 }
