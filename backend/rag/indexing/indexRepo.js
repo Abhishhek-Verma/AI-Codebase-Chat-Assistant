@@ -6,7 +6,7 @@
  *   2. fileParser → filter relevant files
  *   3. chunkCode → AST-aware code chunking
  *   4. embeddingService → generate embeddings
- *   5. vectorService → store in FAISS
+ *   5. vectorService → store in Pinecone (isolated by tenant namespace)
  */
 
 import { loadRepository, fetchFileContent } from '../ingestion/githubLoader.js';
@@ -19,9 +19,10 @@ import { vectorService } from '../../services/vectorService.js';
  * Run the full indexing pipeline
  * @param {string} repoUrl - GitHub repository URL
  * @param {string} branch - branch to index (default: "main")
+ * @param {string} namespace - Pinecone namespace for tenant isolation
  * @returns {Promise<{totalFiles: number, totalChunks: number}>}
  */
-export async function indexRepository(repoUrl, branch = 'main') {
+export async function indexRepository(repoUrl, branch = 'main', namespace = 'default') {
   // Step 1: Fetch repository tree
   const { owner, repo, branch: resolvedBranch, fileEntries } = await loadRepository(repoUrl, branch);
 
@@ -48,8 +49,8 @@ export async function indexRepository(repoUrl, branch = 'main') {
   const texts = allChunks.map((chunk) => chunk.text);
   const embeddings = await embeddingService.generateBatchEmbeddings(texts);
 
-  // Step 5: Store in vector database
-  await vectorService.createIndex(allChunks, embeddings);
+  // Step 5: Store in vector database under tenant namespace
+  await vectorService.createIndex(allChunks, embeddings, namespace);
 
   return {
     totalFiles: relevantFiles.length,

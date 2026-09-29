@@ -3,6 +3,7 @@ import { vectorService } from '../services/vectorService.js';
 import { retrievalService } from '../services/retrievalService.js';
 import { rerank } from '../rag/reranking/rerank.js';
 import { llmService } from '../services/llmService.js';
+import { userStore } from '../services/userStore.js';
 
 /**
  * POST /api/chat/query
@@ -11,7 +12,7 @@ import { llmService } from '../services/llmService.js';
  *
  * Pipeline:
  *   1. embeddingService.generateEmbedding(question)
- *   2. vectorService.search(queryVector)
+ *   2. vectorService.search(queryVector, 20, userNamespace) -> isolated to user!
  *   3. retrievalService.filter(chunks)
  *   4. rerank(query, chunks)
  *   5. llmService.streamAnswer(prompt)
@@ -25,15 +26,18 @@ export async function queryChat(req, res) {
       return res.status(400).json({ error: 'Question is required' });
     }
 
+    const userId = req.user?.id || 'guest_default';
+    const userNamespace = req.user?.namespace || userStore.getNamespaceForUser(userId);
+
     // 1. Generate embedding for the query
     const queryVector = await embeddingService.generateEmbedding(question);
 
-    // 2. Vector similarity search (top-20 candidates)
-    const candidates = await vectorService.search(queryVector, 20);
+    // 2. Vector similarity search (top-20 candidates) strictly within the user's isolated namespace
+    const candidates = await vectorService.search(queryVector, 20, userNamespace);
 
     if (!candidates || candidates.length === 0) {
       return res.status(404).json({
-        error: 'No indexed codebase found. Please index a repository first.',
+        error: 'No indexed codebase found in your session. Please index a repository first before asking questions.',
       });
     }
 

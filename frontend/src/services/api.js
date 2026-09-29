@@ -1,20 +1,136 @@
 /**
- * API Service
- * 
- * Handles all communication with the backend API.
+ * API Service with Multi-Tenant Authentication & Session Support
+ *
+ * Handles communication with the backend API, automatically attaching
+ * Google OAuth bearer tokens or isolated guest session headers.
  */
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
+const TOKEN_KEY = 'codebase_auth_token';
+const GUEST_KEY = 'codebase_guest_session_id';
+
 /**
- * Index a GitHub repository
- * @param {string} repoUrl
- * @returns {Promise<object>}
+ * Get or generate persistent unique guest session ID
+ */
+export function getGuestSessionId() {
+  let sessionId = localStorage.getItem(GUEST_KEY);
+  if (!sessionId) {
+    sessionId = 'guest_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+    localStorage.setItem(GUEST_KEY, sessionId);
+  }
+  return sessionId;
+}
+
+export function getStoredToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setStoredToken(token) {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+}
+
+export function clearStoredToken() {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+/**
+ * Build request headers including tenant auth context
+ */
+function getHeaders(extraHeaders = {}) {
+  const token = getStoredToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...extraHeaders,
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  } else {
+    headers['x-client-session'] = getGuestSessionId();
+  }
+
+  return headers;
+}
+
+/**
+ * Login with Google ID Token / Credential
+ */
+export async function loginWithGoogle(credential) {
+  const response = await fetch(`${BASE_URL}/auth/google`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ credential }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to sign in with Google');
+  }
+
+  const data = await response.json();
+  if (data.token) {
+    setStoredToken(data.token);
+  }
+  return data;
+}
+
+/**
+ * Login with 1-click Demo Account (Candidate Interviewer, Lead Dev, Guest)
+ */
+export async function loginWithDemo(demoType = 'candidate_reviewer') {
+  const response = await fetch(`${BASE_URL}/auth/demo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ demoType }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to authenticate demo account');
+  }
+
+  const data = await response.json();
+  if (data.token) {
+    setStoredToken(data.token);
+  }
+  return data;
+}
+
+/**
+ * Fetch current authenticated user profile and repos
+ */
+export async function getCurrentUser() {
+  const token = getStoredToken();
+  if (!token) return null;
+
+  try {
+    const response = await fetch(`${BASE_URL}/auth/me`, {
+      headers: getHeaders(),
+    });
+    if (!response.ok) {
+      if (response.status === 401) {
+        clearStoredToken();
+      }
+      return null;
+    }
+    return response.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Index a GitHub repository in the user's isolated namespace
  */
 export async function indexRepository(repoUrl) {
   const response = await fetch(`${BASE_URL}/repo/index`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getHeaders(),
     body: JSON.stringify({ repoUrl }),
   });
 
@@ -27,28 +143,45 @@ export async function indexRepository(repoUrl) {
 }
 
 /**
- * Get current index status
- * @returns {Promise<object>}
+ * Get current index status for user's isolated namespace
  */
 export async function getRepoStatus() {
-  const response = await fetch(`${BASE_URL}/repo/status`);
+  const response = await fetch(`${BASE_URL}/repo/status`, {
+    headers: getHeaders(),
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Failed to fetch status');
+  }
   return response.json();
 }
 
 /**
- * Send a chat query and receive streaming response
- * @param {string} question
- * @param {Array} history - conversation history [{role, content}]
- * @param {function} onToken - callback for each token
- * @param {function} onRefs - callback for file references
- * @param {function} onDone - callback when stream ends
- * @param {function} onError - callback on error
+ * Switch active repository for user
+ */
+export async function switchActiveRepo(repoUrl) {
+  const response = await fetch(`${BASE_URL}/repo/select`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ repoUrl }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to switch repository');
+  }
+
+  return response.json();
+}
+
+/**
+ * Send a chat query and receive streaming response from user's isolated namespace
  */
 export async function streamChat(question, history, onToken, onRefs, onDone, onError) {
   try {
     const response = await fetch(`${BASE_URL}/chat/query`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       body: JSON.stringify({ question, history }),
     });
 
@@ -84,8 +217,12 @@ export async function streamChat(question, history, onToken, onRefs, onDone, onE
             if (parsed.references) {
               onRefs(parsed.references);
             }
+            if (parsed.error) {
+              onError(parsed.error);
+              return;
+            }
           } catch {
-            // Skip malformed JSON
+            // Skip unparseable chunks
           }
         }
       }

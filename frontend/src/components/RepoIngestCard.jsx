@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
-import { GitBranch, Database, Loader2, CheckCircle2, AlertCircle, X, Sparkles } from 'lucide-react';
+import { GitBranch, Database, Loader2, CheckCircle2, AlertCircle, X, Sparkles, Shield, Check, ArrowRight } from 'lucide-react';
 import { indexRepository } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
-/**
- * RepoIngestCard - Clean glass card for configuring and indexing GitHub repositories
- */
 export default function RepoIngestCard({ isOpen, onClose, indexStatus, onIndexed }) {
+  const { user, repos, activeRepo, selectRepo, updateRepoData } = useAuth();
   const [repoUrl, setRepoUrl] = useState('');
   const [isIngesting, setIsIngesting] = useState(false);
   const [ingestError, setIngestError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [switchingRepo, setSwitchingRepo] = useState('');
 
   if (!isOpen) return null;
 
@@ -24,8 +24,18 @@ export default function RepoIngestCard({ isOpen, onClose, indexStatus, onIndexed
     let result;
     try {
       result = await indexRepository(repoUrl.trim());
-      setSuccessMsg(`Successfully indexed ${result.totalFiles} files into ${result.totalChunks} chunks!`);
+      setSuccessMsg(`Successfully indexed ${result.totalFiles} files into ${result.totalChunks} chunks in your private namespace!`);
       setRepoUrl('');
+
+      // Update repo list in auth context
+      const newEntry = {
+        repoUrl: result.repo,
+        totalFiles: result.totalFiles,
+        totalChunks: result.totalChunks,
+        indexedAt: new Date().toISOString(),
+      };
+      const updatedRepos = [newEntry, ...(repos.filter((r) => r.repoUrl !== result.repo))];
+      updateRepoData(updatedRepos, newEntry);
     } catch (error) {
       setIngestError(error.message || 'Failed to index repository');
       return;
@@ -39,6 +49,25 @@ export default function RepoIngestCard({ isOpen, onClose, indexStatus, onIndexed
         totalChunks: result.totalChunks,
         repo: result.repo,
       });
+    }
+  };
+
+  const handleSwitchRepo = async (targetRepoUrl) => {
+    if (switchingRepo || targetRepoUrl === activeRepo?.repoUrl) return;
+    setSwitchingRepo(targetRepoUrl);
+    try {
+      const res = await selectRepo(targetRepoUrl);
+      if (onIndexed) {
+        onIndexed({
+          indexed: true,
+          totalChunks: res.totalChunks || activeRepo?.totalChunks || 0,
+          repo: targetRepoUrl,
+        });
+      }
+    } catch (err) {
+      setIngestError(err.message || 'Failed to switch repository');
+    } finally {
+      setSwitchingRepo('');
     }
   };
 
@@ -60,11 +89,70 @@ export default function RepoIngestCard({ isOpen, onClose, indexStatus, onIndexed
           </button>
         </div>
 
+        {/* Namespace privacy pill */}
+        <div className="card-namespace-indicator">
+          <Shield size={13} className="text-orange" />
+          <span>
+            Active Namespace: <strong>{user?.namespace || 'ns_guest_private'}</strong>
+            {user ? ` (${user.name})` : ' (Guest Session)'}
+          </span>
+        </div>
+
+        {/* Previous Repositories List */}
+        {repos && repos.length > 0 && (
+          <div className="previous-repos-container">
+            <label className="section-mini-label">Your Indexed Repositories</label>
+            <div className="previous-repos-list">
+              {repos.map((r) => {
+                const isActive = activeRepo?.repoUrl === r.repoUrl || indexStatus?.repo === r.repoUrl;
+                const repoShortName = r.repoUrl.replace('https://github.com/', '');
+                return (
+                  <div
+                    key={r.repoUrl}
+                    className={`prev-repo-item ${isActive ? 'active' : ''}`}
+                    onClick={() => handleSwitchRepo(r.repoUrl)}
+                  >
+                    <div className="prev-repo-left">
+                      <GitBranch size={14} className={isActive ? 'text-orange' : 'text-muted'} />
+                      <div className="prev-repo-details">
+                        <span className="prev-repo-name">{repoShortName}</span>
+                        <span className="prev-repo-meta">
+                          {r.totalChunks || 0} chunks · {r.totalFiles || 0} files
+                        </span>
+                      </div>
+                    </div>
+                    {isActive ? (
+                      <span className="badge-active-tag">
+                        <Check size={12} /> Active
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-switch-repo"
+                        disabled={switchingRepo === r.repoUrl}
+                      >
+                        {switchingRepo === r.repoUrl ? (
+                          <Loader2 size={12} className="spinner" />
+                        ) : (
+                          <>
+                            <span>Select</span>
+                            <ArrowRight size={12} />
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleIngest} className="ingest-card-form">
           <div className="input-group">
             <label>
               <GitBranch size={13} />
-              <span>Repository URL</span>
+              <span>{repos?.length > 0 ? 'Index Another Repository' : 'Repository URL'}</span>
             </label>
             <div className="input-field-wrapper">
               <input
@@ -101,7 +189,7 @@ export default function RepoIngestCard({ isOpen, onClose, indexStatus, onIndexed
             <Loader2 size={16} className="spinner" />
             <div>
               <p className="notice-title">Pipeline Running</p>
-              <p className="notice-sub">Fetching repository tree, chunking functions/classes, and syncing vectors...</p>
+              <p className="notice-sub">Fetching repository tree, chunking AST nodes, and syncing vectors to Pinecone namespace...</p>
             </div>
           </div>
         )}

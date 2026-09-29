@@ -1,8 +1,9 @@
 /**
- * Vector Service — Pinecone
+ * Vector Service — Pinecone with Multi-Tenant Namespace Isolation
  *
  * Manages vector storage and retrieval using Pinecone cloud vector database.
- * Replaces local FAISS for production deployments.
+ * Every user is strictly isolated into their own Pinecone namespace,
+ * ensuring no cross-tenant data leakage.
  */
 
 import { Pinecone } from '@pinecone-database/pinecone';
@@ -28,12 +29,22 @@ async function getIndex() {
 }
 
 /**
- * Upsert chunks and their embeddings into Pinecone
+ * Upsert chunks and their embeddings into Pinecone under a user-specific namespace
  * @param {Array<{text: string, metadata: object}>} chunks
  * @param {number[][]} embeddings
+ * @param {string} namespace - Pinecone namespace for tenant isolation
  */
-async function createIndex(chunks, embeddings) {
+async function createIndex(chunks, embeddings, namespace = 'default') {
   const index = await getIndex();
+  const ns = index.namespace(namespace);
+
+  // Clear previous records in this namespace so subsequent indexing replaces the active repo
+  try {
+    await ns.deleteAll();
+  } catch (err) {
+    // Some namespaces may not exist yet or have no records
+    console.log(`[vectorService] Namespace ${namespace} reset:`, err.message || 'ok');
+  }
 
   // Build Pinecone records — batch in groups of 100
   const BATCH_SIZE = 100;
@@ -42,7 +53,7 @@ async function createIndex(chunks, embeddings) {
     const batchEmbeddings = embeddings.slice(i, i + BATCH_SIZE);
 
     const vectors = batchChunks.map((chunk, j) => ({
-      id: `chunk-${i + j}`,
+      id: `${namespace}-chunk-${i + j}`,
       values: batchEmbeddings[j],
       metadata: {
         text: chunk.text.slice(0, 8000), // Pinecone metadata limit
@@ -54,7 +65,7 @@ async function createIndex(chunks, embeddings) {
       },
     }));
 
-    await index.upsert({ records: vectors });
+    await ns.upsert({ records: vectors });
 
     // Small delay to respect rate limits
     if (i + BATCH_SIZE < chunks.length) {
@@ -64,15 +75,17 @@ async function createIndex(chunks, embeddings) {
 }
 
 /**
- * Query Pinecone for the top-k similar vectors
+ * Query Pinecone for the top-k similar vectors within a user namespace
  * @param {number[]} queryVector
  * @param {number} k
+ * @param {string} namespace
  * @returns {Promise<Array<{text, metadata, score}>>}
  */
-async function search(queryVector, k = 20) {
+async function search(queryVector, k = 20, namespace = 'default') {
   const index = await getIndex();
+  const ns = index.namespace(namespace);
 
-  const result = await index.query({
+  const result = await ns.query({
     vector: queryVector,
     topK: k,
     includeMetadata: true,
@@ -92,25 +105,29 @@ async function search(queryVector, k = 20) {
 }
 
 /**
- * Get current index status from Pinecone stats
- * @returns {Promise<{indexed: boolean, totalChunks: number}>}
+ * Get current index status from Pinecone stats for a specific user namespace
+ * @param {string} namespace
+ * @param {string} repoName
+ * @returns {Promise<{indexed: boolean, totalChunks: number, repo: string}>}
  */
-async function getIndexStatus() {
+async function getIndexStatus(namespace = 'default', repoName = null) {
   try {
     const index = await getIndex();
     const stats = await index.describeIndexStats();
-    const totalChunks = stats.totalRecordCount || 0;
+    const totalChunks = stats.namespaces?.[namespace]?.recordCount || 0;
 
     return {
       indexed: totalChunks > 0,
       totalChunks,
-      repo: 'Pinecone index',
+      repo: repoName || (totalChunks > 0 ? 'Indexed Repository' : null),
+      namespace,
     };
   } catch {
     return {
       indexed: false,
       totalChunks: 0,
       message: 'No repository indexed yet',
+      namespace,
     };
   }
 }

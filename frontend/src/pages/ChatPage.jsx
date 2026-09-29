@@ -4,18 +4,19 @@ import HeroHeader from '../components/HeroHeader';
 import ChatBox from '../components/ChatBox';
 import RepoIngestCard from '../components/RepoIngestCard';
 import InfoSections from '../components/InfoSections';
+import AuthModal from '../components/AuthModal';
 import { getRepoStatus } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
-/**
- * ChatPage - NextStepAI themed Codebase Assistant
- */
 export default function ChatPage() {
+  const { user, activeRepo } = useAuth();
   const [indexStatus, setIndexStatus] = useState(null);
   const [isIngestOpen, setIsIngestOpen] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
 
   useEffect(() => {
     fetchStatus();
-  }, []);
+  }, [user]);
 
   const fetchStatus = async () => {
     try {
@@ -35,7 +36,6 @@ export default function ChatPage() {
 
   const handleSeeHowItWorks = () => {
     scrollToChat();
-    // If not yet indexed, open the index modal so user can index first
     if (!indexStatus?.indexed) {
       setTimeout(() => {
         setIsIngestOpen(true);
@@ -67,11 +67,13 @@ export default function ChatPage() {
         </svg>
       </div>
 
-      {/* Floating Navbar */}
+      {/* Floating Navbar with User / Auth Dropdown */}
       <Navbar
         onOpenIngest={() => setIsIngestOpen(true)}
+        onOpenAuth={() => setIsAuthOpen(true)}
         isIndexed={indexStatus?.indexed || false}
         totalChunks={indexStatus?.totalChunks || 0}
+        activeRepoName={indexStatus?.repo || activeRepo?.repoUrl}
       />
 
       {/* Main Page Layout */}
@@ -103,6 +105,15 @@ export default function ChatPage() {
           setIndexStatus(newStatus);
           setIsIngestOpen(false);
           scrollToChat();
+        }}
+      />
+
+      {/* Auth / Account Profile Modal */}
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        onSuccess={() => {
+          fetchStatus();
         }}
       />
     </div>
