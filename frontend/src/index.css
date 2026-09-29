@@ -1910,149 +1910,70 @@ html, body {
   margin-bottom: 10px;
 }
 
-.btn-google-simulated {
+.btn-google-primary {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 12px 16px;
+  gap: 12px;
+  padding: 13px 20px;
   background: #ffffff;
   border: 1.5px solid #dadce0;
   border-radius: var(--radius-full);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 14.5px;
+  font-weight: 700;
   color: #3c4043;
   cursor: pointer;
   transition: var(--transition-fast);
-  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.08);
+  box-shadow: 0 2px 8px rgba(60, 64, 67, 0.08);
 }
 
-.btn-google-simulated:hover {
+.btn-google-primary:hover {
   background: #f8fafc;
-  border-color: #c2c7d0;
-  box-shadow: 0 2px 6px rgba(60, 64, 67, 0.12);
+  border-color: #4285F4;
+  color: #1a73e8;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(66, 133, 244, 0.16);
 }
 
 .google-icon-svg {
-  width: 18px;
-  height: 18px;
-}
-
-.auth-divider {
-  display: flex;
-  align-items: center;
-  text-align: center;
-  margin: 22px 0 14px;
-}
-
-.auth-divider::before,
-.auth-divider::after {
-  content: '';
-  flex: 1;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.auth-divider span {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-subtle);
-  padding: 0 12px;
-  letter-spacing: 0.8px;
-}
-
-.demo-profiles-sub {
-  font-size: 12.5px;
-  color: var(--text-muted);
-  margin-bottom: 12px;
-  line-height: 1.45;
-}
-
-.demo-profiles-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.demo-profile-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  background: #f8fafc;
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  border-radius: var(--radius-lg);
-  padding: 12px 16px;
-  cursor: pointer;
-  text-align: left;
-  transition: var(--transition-fast);
-}
-
-.demo-profile-card:hover {
-  background: #ffffff;
-  border-color: var(--orange-border);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
-}
-
-.demo-profile-card.highlight {
-  background: linear-gradient(135deg, #fffbf9 0%, #fff7ed 100%);
-  border-color: #fed7aa;
-}
-
-.profile-card-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.avatar-chip {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
 }
 
-.avatar-chip.reviewer {
-  background: #dbeafe;
-  color: #1e40af;
+.google-login-action-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
 }
 
-.avatar-chip.lead {
-  background: var(--orange-light);
-  color: var(--orange-primary);
-}
-
-.avatar-chip.guest {
-  background: #f1f5f9;
-  color: #475569;
-}
-
-.profile-name {
-  display: block;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-ink);
-}
-
-.profile-role {
-  display: block;
-  font-size: 11.5px;
+.google-hint-sub {
+  font-size: 12.5px;
+  line-height: 1.5;
   color: var(--text-muted);
-  margin-top: 1px;
+  text-align: center;
 }
 
-.badge-fast-tag {
-  font-size: 11px;
-  font-weight: 700;
+.google-hint-sub code {
+  font-family: var(--font-mono);
   background: var(--orange-light);
   color: #c2410c;
-  padding: 4px 9px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--orange-border);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.google-email-form {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.google-nav-icon {
+  margin-right: 2px;
 }
 
 /* Card Namespace Indicator inside Repo Ingest Card */

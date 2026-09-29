@@ -18,7 +18,7 @@ An intelligent code exploration and repository Q&A platform with **strict multi-
 
 ## 🌟 Key Technical Highlights
 
-- **🔒 Strict Multi-Tenant Isolation (Pinecone Namespaces)**: Every user—whether logged in via Google OAuth, a demo interviewer account, or an anonymous guest session—operates inside their own dedicated Pinecone namespace (`ns_*`). User A's indexed repositories and query results are 100% invisible to User B.
+- **🔒 Strict Multi-Tenant Isolation (Pinecone Namespaces)**: Every user signs in via Google OAuth and operates inside their own dedicated Pinecone namespace (`ns_google_*`). User A's indexed repositories and query results are 100% invisible to User B.
 - **⚡ Sub-Second Groq Inference**: High-throughput LLM reasoning with real-time Server-Sent Events (SSE) token streaming, achieving first-token latency in ~270ms.
 - **🌳 AST-Aware Syntactic Chunking**: Intelligent code splitting that preserves function, class, and method boundaries with start/end line tracking—never cutting logic mid-statement.
 - **🌲 Pinecone Cloud Vector Engine**: 1536-dimensional vector space with metadata filtering (file paths, line spans, programming language, repository tags).
@@ -38,13 +38,11 @@ In naive RAG implementations, all indexed code chunks are stored in a single sha
 ### Our Solution: Hard Namespace Isolation
 1. **Per-User Namespaces**: When a user indexes a repository or queries the system, their requests are tagged with a unique tenant ID (`req.user.namespace`).
 2. **Pinecone Namespaces**: Vector operations (`index.namespace(ns).upsert()`, `index.namespace(ns).query()`, `stats.namespaces[ns]`) execute **exclusively** within that user's partition.
-3. **Session & Auth Options**:
-   - **Google Sign-In**: Authenticates via Google Identity Services (`https://oauth2.googleapis.com/tokeninfo`) and isolates vectors under `ns_google_<sub_id>`.
-   - **1-Click Evaluator Demo Accounts**: Built specifically for recruiters, reviewers, and interviewers to test multi-tenancy immediately without configuring OAuth credentials:
-     - 🎓 **Technical Interviewer** (`ns_demo_candidate_reviewer`)
-     - 🚀 **Abhishek Verma (Lead Dev)** (`ns_demo_lead_dev`)
-     - 💻 **Guest Developer** (`ns_demo_guest_developer`)
-   - **Guest Session**: Anonymous users receive an isolated client session ID (`x-client-session`), isolating them to `ns_guest_<uuid>`.
+3. **Google OAuth 2.0 Authentication**:
+   - Authenticates securely via Google Identity Services (`https://oauth2.googleapis.com/tokeninfo`).
+   - Every Google account is deterministically mapped to a private namespace (`ns_google_<user_id>`).
+   - All indexed AST chunks, embeddings, and chat contexts are stored exclusively inside that user's private namespace.
+   - When a different Google user logs in, they only see their own previous repositories and work.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -52,7 +50,7 @@ In naive RAG implementations, all indexed code chunks are stored in a single sha
 │                                                                        │
 │   ┌───────────────────────────┐    ┌───────────────────────────┐       │
 │   │ Namespace:                │    │ Namespace:                │       │
-│   │ ns_demo_candidate_reviewer│    │ ns_demo_lead_dev          │       │
+│   │ ns_google_user_alpha      │    │ ns_google_user_beta       │       │
 │   │                           │    │                           │       │
 │   │ • Vectors: expressjs/ex.. │    │ • Vectors: facebook/react │       │
 │   │ • Chunks: 169             │    │ • Chunks: 240             │       │
@@ -60,7 +58,7 @@ In naive RAG implementations, all indexed code chunks are stored in a single sha
 │                 ▲                                ▲                     │
 │                 │ Query / Upsert                 │ Query / Upsert      │
 │                 │                                │                     │
-│         [ Technical Reviewer ]           [ Lead Developer ]            │
+│       [ Google User Alpha ]            [ Google User Beta ]            │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -170,16 +168,6 @@ Content-Type: application/json
 
 {
   "credential": "<google_id_token>"
-}
-```
-
-#### 1-Click Demo Login
-```http
-POST /api/auth/demo
-Content-Type: application/json
-
-{
-  "demoType": "candidate_reviewer"
 }
 ```
 

@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   getCurrentUser,
   loginWithGoogle as apiLoginWithGoogle,
-  loginWithDemo as apiLoginWithDemo,
   clearStoredToken,
   switchActiveRepo as apiSwitchActiveRepo,
 } from '../services/api';
@@ -53,19 +52,6 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const loginAsDemo = async (demoType = 'candidate_reviewer') => {
-    setIsLoading(true);
-    try {
-      const data = await apiLoginWithDemo(demoType);
-      setUser(data.user);
-      setRepos(data.repos || []);
-      setActiveRepo(data.activeRepo || null);
-      return data;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const logout = () => {
     clearStoredToken();
     setUser(null);
@@ -100,7 +86,6 @@ export function AuthProvider({ children }) {
         repos,
         activeRepo,
         loginWithGoogle,
-        loginAsDemo,
         logout,
         selectRepo,
         refreshSession,
