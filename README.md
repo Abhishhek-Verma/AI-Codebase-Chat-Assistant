@@ -160,6 +160,8 @@ In naive RAG implementations, all indexed code chunks are stored in a single sha
 
 ## 🔌 API Reference
 
+The frontend uses these REST endpoints to communicate with the backend for repository indexing, codebase queries, and indexing status.
+
 All protected endpoints accept either `Authorization: Bearer <token>` or `x-client-session: <uuid>`.
 
 ### 1. Authentication Endpoints
