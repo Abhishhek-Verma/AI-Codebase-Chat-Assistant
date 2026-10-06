@@ -341,6 +341,8 @@ Content-Type: application/json
 
 ---
 
+> **Note**: Start the backend and frontend in separate terminal windows.
+
 ### Step 1: Configure Backend
 
 ```bash
@@ -377,7 +379,7 @@ npm run dev
 
 ---
 
-### Step 2: Configure Frontend
+### Step 2: Configure Frontend (in a separate terminal)
 
 ```bash
 cd ../frontend
